@@ -1,0 +1,80 @@
+# ===================================================
+# LogSentinel Backend - Configuración de Aplicación
+# ===================================================
+
+spring:
+  application:
+    name: logsentinel-backend
+
+  # --- Base de Datos (PostgreSQL + pgvector) ---
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/logsentinel}
+    username: ${SPRING_DATASOURCE_USERNAME:logsentinel}
+    password: ${SPRING_DATASOURCE_PASSWORD:logsentinel}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  # --- JPA / Hibernate ---
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  # --- Flyway: Migraciones de Base de Datos ---
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # --- Spring AI: OpenAI ---
+  ai:
+    openai:
+      api-key: ${SPRING_AI_OPENAI_API_KEY}
+      chat:
+        options:
+          model: gpt-4o
+          temperature: 0.2
+          max-tokens: 2048
+      embedding:
+        options:
+          model: text-embedding-3-small
+
+    # --- Spring AI: PGVector Store ---
+    vectorstore:
+      pgvector:
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 1536
+        initialize-schema: false
+
+  # --- Async: Configuración de hilos para SSE ---
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 100
+      thread-name-prefix: logsentinel-async-
+
+# --- Actuator: Endpoints de salud y métricas ---
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, metrics
+  endpoint:
+    health:
+      show-details: always
+
+# --- Servidor ---
+server:
+  port: 8080
+  servlet:
+    context-path: /

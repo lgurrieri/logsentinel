@@ -1,0 +1,26 @@
+# ===================================================
+# LogSentinel - Configuración de Tests
+# ===================================================
+
+spring:
+  datasource:
+    url: jdbc:tc:postgresql:16:///logsentinel_test?TC_REUSABLE=true
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  flyway:
+    enabled: true
+
+  ai:
+    openai:
+      api-key: test-key-mock
+      chat:
+        options:
+          model: gpt-4o
+      embedding:
+        options:
+          model: text-embedding-3-small
