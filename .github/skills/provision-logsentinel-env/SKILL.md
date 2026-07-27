@@ -1,3 +1,11 @@
+---
+name: provision-logsentinel-env
+description: >
+  Provisions LogSentinel infrastructure for dev, staging, and prod following DevSecOps.
+  Use when: "configurar entorno", "crear docker-compose", "preparar staging",
+  "aprovisionar infraestructura", "crear CI/CD pipeline", "setup entorno nuevo".
+---
+
 # Skill: provision-logsentinel-env
 
 ## Propósito
@@ -273,3 +281,63 @@ backend/.env
 *.env
 !*.env.example
 ```
+
+## Proceso de provisión (seguir en orden)
+
+### Paso 1: Identificar el entorno target
+Confirmar cuál de los 3 entornos se está configurando:
+- `dev` → local, Docker Compose, `.env.dev`
+- `staging` → GitHub Actions + Render, GitHub Secrets
+- `prod` → GitHub Actions + Render, aprobación manual, Render Env Vars
+
+### Paso 2: Generar los archivos del entorno
+- Generar `docker-compose.yml` (base) si no existe
+- Generar el override específico: `docker-compose.{env}.yml`
+- Generar `application-{env}.yml` en `backend/src/main/resources/`
+
+### Paso 3: Verificar que ningún secreto queda en código
+```bash
+grep -r "api-key\|password\|secret" backend/src/main/ --include="*.java" --include="*.yml"
+# Resultado esperado: 0 matches con valores hardcodeados
+# Los valores deben ser ${ENV_VAR}, nunca literales
+```
+
+### Paso 4: Verificar el entorno localmente (solo dev)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up db -d
+sleep 5
+docker compose ps  # db debe estar "healthy"
+cd backend && mvn spring-boot:run -Dspring.profiles.active=dev &
+curl -s http://localhost:8080/actuator/health | jq .status
+# Esperado: "UP"
+```
+
+### Paso 5: Verificar pipeline CI (staging/prod)
+Confirmar que `.github/workflows/ci.yml` tiene los 3 jobs en orden:
+`security-scan` → `test` → `build-and-scan-image`
+
+## Racionalizaciones comunes
+
+| Racionalización | Realidad |
+|----------------|---------|
+| "Puedo hardcodear la API key en dev, nadie va a ver el .env.dev" | `.env.dev` puede llegar al repo por accidente. `${ENV_VAR}` con default funciona igual y es seguro. |
+| "El staging no necesita pipeline de seguridad, es solo testing" | El staging puede recibir datos reales de prueba. OWASP + Gitleaks son rápidos y gratuitos. |
+| "La imagen Docker no necesita escaneo Trivy en cada push" | Una librería vulnerable comprometida en staging puede ser usada para atacar prod. |
+| "Puedo usar ddl-auto=update en staging" | Flyway es la única fuente de verdad del esquema. `update` crea divergencias silenciosas entre entornos. |
+
+## Red Flags
+
+- `SPRING_AI_OPENAI_API_KEY=sk-...` en cualquier archivo que podría llegar al repo
+- `spring.jpa.hibernate.ddl-auto: update` en staging o prod
+- `docker-compose.yml` con valores hardcodeados en lugar de `${VARIABLE}`
+- Pipeline de CI que omite el security-scan job
+- La imagen Docker corre como `root` (verificar `USER logsentineluser` en Dockerfile)
+
+## Verificación (checklist de salida)
+
+- [ ] `docker compose ps` → `db` en estado `healthy`
+- [ ] `curl http://localhost:8080/actuator/health` → `{"status":"UP"}`
+- [ ] `grep -r "sk-" backend/src/` → 0 matches (sin API keys en código)
+- [ ] `application-prod.yml` tiene `ddl-auto: validate`
+- [ ] Dockerfile tiene `USER logsentineluser` (usuario non-root)
+- [ ] `.github/workflows/ci.yml` existe con jobs `security-scan`, `test`, `build-and-scan-image`

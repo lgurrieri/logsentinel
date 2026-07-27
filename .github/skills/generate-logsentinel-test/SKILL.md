@@ -1,8 +1,16 @@
+---
+name: logsentinel-test-patterns
+description: >
+  Reference patterns for tests in LogSentinel (unit, integration, security).
+  Use as a reference when writing tests. For the TDD workflow (Red-Green-Refactor),
+  use tdd-logsentinel instead.
+---
+
 # Skill: generate-logsentinel-test
 
 ## Propósito
-Genera tests para LogSentinel siguiendo la estrategia de testing del proyecto.
-Usar cuando: "crear test para X", "generar tests unitarios", "crear integration test para Y".
+Referencia de patrones de tests para LogSentinel siguiendo la estrategia de testing del proyecto.
+Usar como referencia al escribir tests. Para el workflow TDD (test primero), usar `tdd-logsentinel`.
 
 ## Pirámide de tests del proyecto
 

@@ -73,3 +73,33 @@ Versiones gestionadas por el BOM de Spring Boot 4 — NO agregar `<version>` exp
 - `ProcessBuilder` en `RemediationService`: validar el script antes de ejecutar
 - `@ControllerAdvice` global: NUNCA exponer stacktraces Java en respuestas HTTP
 - Nuevas variables de entorno: documentarlas en la skill `provision-logsentinel-env`
+
+## Logging estructurado — obligatorio en infrastructure/
+
+LogSentinel es una herramienta SRE. Sus propios logs deben ser de calidad SRE.
+
+```java
+// ✅ Correcto — log con contexto buscable
+log.info("Incident created", Map.of(
+    "incidentId", id.toString(),
+    "systemName", systemName,
+    "priority", priority.name()
+));
+
+log.error("RAG pipeline failed", Map.of(
+    "incidentId", incidentId.toString(),
+    "stage", "embedding",
+    "cause", e.getMessage()
+));
+
+// ❌ Incorrecto — no buscable, no estructurado
+log.info("Incident created: " + id);
+log.error("Error: " + e.getMessage());
+```
+
+Niveles por capa:
+- `domain/` → TRACE (raramente loguea — es Pure Java)
+- `application/usecases/` → DEBUG (inicio/fin de casos de uso)
+- `infrastructure/adapters/in/web/` → INFO (requests recibidos)
+- `infrastructure/adapters/out/ai/` → INFO (llamadas al LLM con tokens usados)
+- Errores en cualquier capa → ERROR con `incidentId` como contexto siempre que aplique

@@ -1,3 +1,11 @@
+---
+name: scaffold-react-feature
+description: >
+  Generates feature-driven React 18+ module following LogSentinel's architecture.
+  Use when: "crear feature React X", "scaffold feature incidents/runbooks",
+  "inicializar frontend feature", "scaffold React incidents", "scaffold React runbooks".
+---
+
 # Skill: scaffold-react-feature
 
 ## Propósito

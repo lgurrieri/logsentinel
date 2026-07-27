@@ -1,8 +1,17 @@
+---
+name: scaffold-hex-usecase
+description: >
+  Generates the complete Clean Architecture skeleton for a LogSentinel use case.
+  Use AFTER tdd-logsentinel (tests first). Use when: "implementar US1/US2/US3/US4",
+  "crear caso de uso X", "scaffold usecase".
+---
+
 # Skill: scaffold-hex-usecase
 
 ## Propósito
 Genera el esqueleto completo de un caso de uso siguiendo la Clean Architecture (Hexagonal)
-de LogSentinel. Usar cuando: "implementar US1/US2/US3/US4", "crear caso de uso X",
+de LogSentinel. Usar DESPUÉS de `tdd-logsentinel` (primero el test, luego el scaffold).
+Usar cuando: "implementar US1/US2/US3/US4", "crear caso de uso X",
 "scaffold [nombre]UseCase".
 
 ## Contexto obligatorio
@@ -125,3 +134,30 @@ Ver skill `generate-logsentinel-test` para el template exacto.
 - `infrastructure` → puede importar `application` y `domain`
 - `@RestController` NUNCA conoce `@Entity` — siempre DTOs `record`
 - Los `record` NO tienen setters (inmutables por diseño)
+
+## Racionalizaciones comunes
+
+| Racionalización | Realidad |
+|----------------|----------|
+| "Puedo usar @Autowired por ahora" | Constructor injection es obligatorio. @Autowired oculta dependencias y rompe tests unitarios. |
+| "El puerto lo agrego después" | Sin el puerto, el caso de uso tiene un import de infrastructure. Viola Clean Architecture desde el commit 1. |
+| "Este DTO puede ser una clase normal" | Los records son inmutables por diseño. Una clase mutable como DTO es un bug esperando ocurrir. |
+| "Puedo retornar la entidad @Entity desde el controller" | La entidad expone el esquema de BD. El record DTO es el contrato de API externo. |
+| "Agrego Lombok para ahorrar tiempo" | El proyecto no usa Lombok. Java 25 tiene records nativos. Agregar Lombok rompe el principio de la codebase. |
+
+## Red Flags
+
+- `import org.springframework.*` en cualquier clase de `domain/`
+- `import com.logsentinel.infrastructure.*` en cualquier clase de `application/`
+- Un método de `@RestController` que retorna un tipo `@Entity`
+- `@Autowired` en cualquier capa (constructor injection obligatorio)
+- `import lombok.*` en cualquier archivo Java del proyecto
+- Una clase en `dto/` que no es `record` (es `class` con getters/setters)
+
+## Verificación (checklist de salida)
+
+- [ ] `domain/` → 0 imports de frameworks: `grep -r "import org.springframework" domain/`
+- [ ] `application/` → 0 imports de infrastructure: `grep -r "import com.logsentinel.infrastructure" application/`
+- [ ] `infrastructure/.../dto/` → todos son `record`: `grep -l "^public class" **/dto/*.java`
+- [ ] `@Entity` no aparece en ningún `@RestController`
+- [ ] El proyecto compila: `mvn compile -q` → BUILD SUCCESS

@@ -1,3 +1,11 @@
+---
+name: verify-clean-arch
+description: >
+  Architecture quality gate for LogSentinel. Verifies Clean Architecture rules
+  and basic DevSecOps controls. Use before any PR or "check architecture",
+  "validar dependencias", "verificar arquitectura".
+---
+
 # Skill: verify-clean-arch
 
 ## Propósito
@@ -84,3 +92,34 @@ Resolver antes de abrir el PR.
 ## Criterio de aprobación
 - 0 errores críticos (Check 1, 2, 3, 5)
 - 0 advertencias bloqueantes (Check 4, 6, 7)
+
+## Racionalizaciones comunes
+
+| Racionalización | Realidad |
+|----------------|----------|
+| "Es solo temporal, lo corrijo después" | La deuda técnica de arquitectura se compone. Un import prohibido hoy genera 10 imports prohibidos en un mes. |
+| "El test pasa igual" | Los tests no verifican dependencias de paquete. La violación existe aunque los tests pasen. |
+| "No es urgente, el feature funciona" | La arquitectura rota es invisible hasta que escala. Cuando escale será imposible refactorizar. |
+| "Agrego Lombok porque agiliza" | El proyecto tiene una decisión explícita de no usar Lombok (Java 25 tiene records). Violarlo crea inconsistencia de codebase. |
+
+## Red Flags (DETENER el trabajo inmediatamente)
+
+Estas violaciones indican que hay que parar y corregir ANTES de continuar:
+- `@Autowired` encontrado en cualquier capa
+- `import lombok.Data` en una entidad `@Entity`
+- Un `@RestController` que retorna un tipo `@Entity` directamente
+- `@MockBean` en un test que extiende solo `@ExtendWith(MockitoExtension.class)` (indica violación de capas)
+- `import com.logsentinel.infrastructure.*` en `application/usecases/`
+
+## Verificación (checklist de salida)
+
+Resultado esperado para cada check:
+- [ ] Check 1 Dependencias: 0 violaciones encontradas
+- [ ] Check 2 Lombok: `grep` retorna 0 matches
+- [ ] Check 3 DTOs como records: `grep` retorna 0 archivos
+- [ ] Check 4 equals() en @Entity: comparación solo por `id`
+- [ ] Check 5 Credenciales: 0 matches
+- [ ] Check 6 ProcessBuilder: validación de input presente
+- [ ] Check 7 SseEmitter.complete(): presente en bloque `finally`
+
+**RESULTADO FINAL**: PASS (todos los checks superados) o FAIL con lista de archivos a corregir.
