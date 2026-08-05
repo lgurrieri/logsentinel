@@ -239,3 +239,11 @@ Suite completa verde
 - [ ] Bug fixes incluyen test de reproducción que falló antes del fix
 - [ ] Suite completa verde: `mvn test -q` → BUILD SUCCESS
 - [ ] Nombres de tests describen el comportamiento: `should_{behavior}_when_{condition}`
+
+## Patrones avanzados (integración, SSE, seguridad)
+
+Ver `references/advanced-test-patterns.md` para:
+- Test de SSE endpoint (`Content-Type: text/event-stream`)
+- Test de integración con Testcontainers (Spring Boot full-stack + `@MockBean ChatClient`)
+- Test de seguridad para `RemediationService` (command injection)
+- Convenciones de naming y pitfall de artifact IDs en Testcontainers 2.x

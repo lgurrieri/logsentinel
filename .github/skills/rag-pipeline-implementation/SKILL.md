@@ -2,11 +2,16 @@
 name: rag-pipeline-implementation
 description: >
   Guides implementation of the RAG pipeline — the core of LogSentinel.
-  Use when implementing US2 (vector search), US3 (SSE streaming), or any extension
-  of the AI diagnostic pipeline. Covers Spring AI 2.0 + pgvector + BeanOutputConverter + SSE.
+  Use AFTER scaffold-hex-usecase (hexagonal structure first). Use when implementing
+  US2 (vector search), US3 (SSE streaming), or any extension of the AI diagnostic pipeline.
+  Covers Spring AI 2.0 + pgvector + BeanOutputConverter + SSE.
 ---
 
 # RAG Pipeline Implementation — LogSentinel
+
+## Prerequisito
+Ejecutar `scaffold-hex-usecase` **primero** para generar la estructura hexagonal del caso de uso.
+Esta skill añade únicamente los adaptadores Spring AI encima del esqueleto ya creado.
 
 ## Overview
 

@@ -7,7 +7,7 @@
 - Arquitectura completa: [AI4Devs-finalproject/](../AI4Devs-finalproject/)
 - Modelo de datos: [#3-modelo-de-datos.md](../AI4Devs-finalproject/%233-modelo-de-datos.md)
 - Contrato de API (OpenAPI 3.0): [docs/openapi: 3.0.yml](docs/openapi:%203.0.yml)
-- Historias de usuario: [#5-historias-de-usuario.md](../AI4Devs-finalproject/%235-historias-de-usuario.md)
+- Historias de usuario: [docs/user-stories/](docs/user-stories/)
 
 ---
 

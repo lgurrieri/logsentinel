@@ -110,16 +110,7 @@ export async function create{Name}(request: {Name}Request): Promise<{Name}Respon
   return response.json();
 }
 
-// SSE para streaming de diagnóstico (solo para endpoint de analysis)
-export function streamDiagnosis(
-  id: string,
-  onChunk: (chunk: string) => void,
-): () => void {
-  const source = new EventSource(`${API_BASE}/api/v1/incidents/${id}/stream`);
-  source.onmessage = (e) => onChunk(JSON.parse(e.data).chunk ?? e.data);
-  source.onerror = () => source.close();
-  return () => source.close(); // retorna cleanup para useEffect
-}
+// Para SSE (específico de la feature incidents): ver .github/prompts/implement-logterm-sse.prompt.md
 ```
 
 ### `index.ts` (barrel export)
@@ -130,10 +121,64 @@ export type { } from './types/{name}.types';
 // Exportar componentes públicos de la feature
 ```
 
-## Reglas críticas
-- SIN Zustand, Redux ni MobX — solo Context API + useReducer
-- Los componentes NUNCA usan `useContext` directamente — siempre via hook
-- La URL base SIEMPRE desde `VITE_API_BASE_URL` (nunca hardcoded)
-- Las acciones del reducer son discriminated unions tipadas
-- El hook lanza `Error` si se usa fuera del Provider
-- El cleanup de `EventSource` se retorna para usarlo en `useEffect`
+### `components/{Name}.test.tsx` (Vitest + React Testing Library)
+```typescript
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi } from 'vitest';
+import { {Name}Provider } from '../context/{Name}Context';
+import { {Name}Component } from './{Name}Component';
+
+function renderWithProvider() {
+  return render(
+    <{Name}Provider>
+      <{Name}Component />
+    </{Name}Provider>,
+  );
+}
+
+describe('{Name}Component', () => {
+  it('renderiza el estado inicial correctamente', () => {
+    renderWithProvider();
+    // TODO: agregar aserción sobre el estado inicial visible
+  });
+
+  it('muestra estado vacío cuando no hay datos', () => {
+    renderWithProvider();
+    // TODO: verificar empty state
+  });
+});
+```
+
+### `context/{name}Reducer.test.ts` (Vitest puro — sin DOM)
+```typescript
+import { describe, it, expect } from 'vitest';
+import { {name}Reducer, initialState } from './{Name}Context';
+
+describe('{name}Reducer', () => {
+  it('retorna el estado inicial por defecto', () => {
+    // @ts-expect-error — acción inválida para verificar el default
+    const state = {name}Reducer(undefined, { type: '__UNKNOWN__' });
+    expect(state).toEqual(initialState);
+  });
+});
+```
+
+### `e2e/{name}-flow.spec.ts` (Playwright)
+```typescript
+import { test, expect } from '@playwright/test';
+
+test.describe('{Name} — flujo principal', () => {
+  test('flujo completo end-to-end', async ({ page }) => {
+    await page.goto('/');
+    // TODO: implementar pasos del flujo E2E
+    // Guía: ver skill tdd-react-logsentinel para el template completo del flujo SRE
+  });
+});
+```
+
+## Ver también
+Todas las reglas de stack (sin Zustand, VITE_API_BASE_URL, EventSource cleanup,
+hook como único punto de acceso al contexto) están definidas en
+`.github/copilot-instructions-frontend.md` — activas automáticamente para
+cualquier archivo en `frontend/**`.
