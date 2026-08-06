@@ -5,7 +5,7 @@ applyTo: frontend/**
 # Instrucciones: Frontend LogSentinel
 
 ## Stack exacto
-React 18.3+ · TypeScript 5.x (strict) · Vite 6 · Tailwind CSS 4 · Vitest 2 · Playwright
+React 19.x · TypeScript 6.x (strict) · Vite 8 · Tailwind CSS 4 · Vitest 4 · Playwright 1.62+
 
 ## Gestión de estado — regla no negociable
 SIN Zustand, Redux ni MobX. Solo Context API + useReducer nativos de React.
@@ -72,7 +72,22 @@ Acento info:    text-blue-400
 Prohibido: valores arbitrarios `px-[13px]`, raw hex en `style={}`, inline styles, `!important`.
 Espaciado: escala estándar `p-2 / p-4 / p-6 / p-8` — no `p-3.5`.
 
-## TypeScript — reglas
+## TypeScript 6 — reglas
+
+### `verbatimModuleSyntax: true` — crítico en TS 6
+TypeScript 6 activa `verbatimModuleSyntax` por defecto. Los tipos DEBEN importarse con `import type`:
+
+```typescript
+// ✅ Correcto en TS 6
+import { useState, useContext } from 'react';
+import type { ReactNode } from 'react';
+
+// ❌ Incorrecto — falla en build con verbatimModuleSyntax
+import { useState, useContext, ReactNode } from 'react';
+```
+
+Regla: si el símbolo solo se usa como tipo (en anotaciones `: Tipo` o `<Tipo>`), usar `import type`.
+
 - `strict: true` en tsconfig — **nunca** `any` ni `as unknown as T` para esquivar el compilador
 - Props: interfaces con sufijo `Props` (`LogTerminalProps`, `ScenarioSelectorProps`)
 - Acciones del reducer: discriminated unions tipadas explícitas

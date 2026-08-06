@@ -74,9 +74,52 @@ Buscar `new ProcessBuilder` y confirmar que hay una llamada a un método de vali
 Verificar que todos los usos de `SseEmitter` tienen `emitter.complete()` en un bloque `finally`
 para evitar hilos huérfanos en Tomcat.
 
+---
+
+## Checks de seguridad de perímetro (DevSecOps)
+
+### Check 8: Frontend — sin XSS via `dangerouslySetInnerHTML`
+Los logs del stream SSE son untrusted input. React escapa automáticamente JSX, pero
+`dangerouslySetInnerHTML` bypasea esa protección.
+
+```bash
+grep -rn "dangerouslySetInnerHTML" frontend/src/ --include="*.tsx" --include="*.ts"
+```
+Resultado esperado: **0 matches**.
+Si se necesita renderizar Markdown del LLM, usar `marked` + `DOMPurify.sanitize()`.
+
+### Check 9: Dockerfile — usuario non-root en etapa production
+```bash
+grep -n "^USER" backend/Dockerfile 2>/dev/null
+```
+Resultado esperado: al menos `USER logsentineluser` (uid 1001) **antes** de `ENTRYPOINT`.
+Si el archivo no existe, reportar como pendiente (no como fallo del código existente).
+
+### Check 10: Sin secretos en capas del Dockerfile
+```bash
+grep -nE "^ENV.*(KEY|PASSWORD|SECRET|TOKEN)" backend/Dockerfile 2>/dev/null
+```
+Resultado esperado: **0 matches**.
+Los secretos se inyectan en runtime vía `docker run -e`, nunca en tiempo de build.
+
+### Check 11: Workflows GitHub Actions con `permissions:` declarado
+```bash
+find .github/workflows/ -name "*.yml" -exec \
+  grep -L "^permissions:" {} \; 2>/dev/null
+```
+Resultado esperado: **0 archivos** (todos tienen `permissions:` a nivel raíz).
+Sin declaración explícita, GitHub hereda `write-all` si el repo lo permite.
+
+### Check 12: Actions de terceros pineadas a SHA (no tags mutables)
+```bash
+grep -rn "uses: " .github/workflows/ --include="*.yml" | \
+  grep -v "@[0-9a-f]\{40\}" | grep -v "uses: \.\/" 2>/dev/null
+```
+Resultado esperado: **0 matches** (todas las Actions externas pineadas a SHA de 40 chars).
+
 ## Formato del informe de salida
 ```
-=== LogSentinel Architecture Report ===
+=== LogSentinel Architecture + Security Report ===
 ✅ Reglas de dependencia: OK
 ❌ Lombok: 2 violaciones → Runbook.java:15, RunbookChunk.java:8
 ✅ DTOs como records: OK
@@ -84,14 +127,23 @@ para evitar hilos huérfanos en Tomcat.
 ✅ Credenciales hardcodeadas: OK
 ✅ ProcessBuilder validado: OK
 ✅ SseEmitter.complete() en finally: OK
+--- DevSecOps ---
+✅ dangerouslySetInnerHTML: OK
+✅ Dockerfile usuario non-root: OK
+✅ Sin secretos en ENV layers: OK
+⚠️  Workflows sin permissions:: ci.yml (no declarado)
+✅ Actions pineadas a SHA: OK
 
-RESULTADO: FAIL — 1 error crítico, 1 advertencia
+RESULTADO: FAIL — 1 error crítico, 2 advertencias
 Resolver antes de abrir el PR.
 ```
 
 ## Criterio de aprobación
-- 0 errores críticos (Check 1, 2, 3, 5)
-- 0 advertencias bloqueantes (Check 4, 6, 7)
+- 0 errores críticos (Check 1, 2, 3, 5, 8)
+- 0 advertencias bloqueantes (Check 4, 6, 7, 9, 10, 11, 12)
+
+Los checks 9–12 solo aplican si los artefactos de infraestructura existen.
+Si `backend/Dockerfile` o `.github/workflows/` no existen, reportar como "pendiente" no como fallo.
 
 ## Racionalizaciones comunes
 
@@ -113,7 +165,7 @@ Estas violaciones indican que hay que parar y corregir ANTES de continuar:
 
 ## Verificación (checklist de salida)
 
-Resultado esperado para cada check:
+### Clean Architecture (backend)
 - [ ] Check 1 Dependencias: 0 violaciones encontradas
 - [ ] Check 2 Lombok: `grep` retorna 0 matches
 - [ ] Check 3 DTOs como records: `grep` retorna 0 archivos
@@ -121,5 +173,12 @@ Resultado esperado para cada check:
 - [ ] Check 5 Credenciales: 0 matches
 - [ ] Check 6 ProcessBuilder: validación de input presente
 - [ ] Check 7 SseEmitter.complete(): presente en bloque `finally`
+
+### DevSecOps (perímetro)
+- [ ] Check 8 dangerouslySetInnerHTML: 0 matches en frontend
+- [ ] Check 9 Dockerfile usuario non-root: `USER logsentineluser` presente
+- [ ] Check 10 Sin ENV secretos: 0 matches en Dockerfile
+- [ ] Check 11 Workflows con `permissions:`: 0 archivos sin declarar
+- [ ] Check 12 Actions pineadas a SHA: 0 Actions con tags mutables
 
 **RESULTADO FINAL**: PASS (todos los checks superados) o FAIL con lista de archivos a corregir.
