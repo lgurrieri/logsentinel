@@ -90,4 +90,5 @@ Reportar al usuario:
 - Si el build falla con TypeScript → nunca usar `as any` como solución rápida
 - Si un test requiere mockear el Context completo → repensar la estructura del test (usar el Provider real)
 - **Nunca** hacer `git commit` ni `git push` — eso es responsabilidad exclusiva del desarrollador
+- Al reportar qué commitear, sugerir el mensaje ya en formato Conventional Commits (ver `.github/copilot-instructions-commits.md`)
 - **Nunca** modificar archivos fuera de `frontend/` sin confirmación explícita del usuario

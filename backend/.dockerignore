@@ -1,0 +1,17 @@
+target/
+*.class
+*.jar
+*.war
+
+.git/
+.github/
+.vscode/
+
+*.env
+.env*
+!.env.example
+
+*.log
+*.tmp
+
+src/test/

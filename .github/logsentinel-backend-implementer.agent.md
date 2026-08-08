@@ -92,7 +92,7 @@ Próximo paso: abrir PR contra 'develop' con título "[backend] {descripción br
   frontend corresponde al agente `logsentinel-frontend-implementer`
 - NUNCA usar `@Autowired` — siempre constructor injection
 - NUNCA usar Lombok en ningún archivo Java
-- NUNCA hacer commit automático — solo reportar qué commitear y con qué mensaje
+- NUNCA hacer commit automático — reportar al usuario qué commitear con el mensaje ya formateado en Conventional Commits (ver `.github/copilot-instructions-commits.md`)
 - NUNCA devolver `@Entity` directamente desde un controller
 - NUNCA hardcodear credenciales (usar `${ENV_VAR}` en `application-{profile}.yml`)
 - Si `verify-clean-arch` reporta violaciones, corregirlas ANTES de reportar éxito
