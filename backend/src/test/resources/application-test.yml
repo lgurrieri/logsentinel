@@ -1,12 +1,8 @@
 # ===================================================
-# LogSentinel - Configuración de Tests
+# LogSentinel - Configuracion de Tests
 # ===================================================
 
 spring:
-  datasource:
-    url: jdbc:tc:postgresql:16:///logsentinel_test?TC_REUSABLE=true
-    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
-
   jpa:
     hibernate:
       ddl-auto: validate
@@ -14,6 +10,7 @@ spring:
 
   flyway:
     enabled: true
+    locations: classpath:db/migration
 
   ai:
     openai:
