@@ -1,0 +1,87 @@
+package com.logsentinel.infrastructure.adapters.in.web;
+
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.time.OffsetDateTime;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Global exception handler that intercepts validation failures and other errors,
+ * returning clean HTTP responses WITHOUT exposing internal stacktraces.
+ *
+ * All algorithms here are O(n) — linear iteration over field errors only.
+ */
+@RestControllerAdvice
+public class GlobalExceptionHandler {
+
+    /**
+     * Handles JSR-380 validation failures from @Valid annotations.
+     * Returns HTTP 400 with structured field-level error details.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Map<String, Object>> handleValidationException(
+            MethodArgumentNotValidException ex) {
+
+        // O(n) linear scan over field errors — no backtracking
+        List<Map<String, String>> fieldErrors = ex.getBindingResult()
+                .getFieldErrors()
+                .stream()
+                .map(error -> Map.of(
+                        "field", error.getField(),
+                        "message", error.getDefaultMessage() != null
+                                ? error.getDefaultMessage()
+                                : "invalid value"
+                ))
+                .toList();
+
+        Map<String, Object> body = Map.of(
+                "timestamp", OffsetDateTime.now().toString(),
+                "status", HttpStatus.BAD_REQUEST.value(),
+                "error", "Validation Failed",
+                "fieldErrors", fieldErrors
+        );
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * Handles malformed JSON or unreadable request bodies (e.g., invalid enum values).
+     * Returns HTTP 400 without exposing internal parsing details.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleMessageNotReadable(
+            HttpMessageNotReadableException ex) {
+
+        Map<String, Object> body = Map.of(
+                "timestamp", OffsetDateTime.now().toString(),
+                "status", HttpStatus.BAD_REQUEST.value(),
+                "error", "Malformed Request",
+                "message", "Request body is missing or contains invalid data"
+        );
+
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * Catch-all handler for unexpected exceptions.
+     * NEVER exposes stacktraces to the client.
+     */
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> handleGenericException(Exception ex) {
+
+        Map<String, Object> body = Map.of(
+                "timestamp", OffsetDateTime.now().toString(),
+                "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "error", "Internal Server Error",
+                "message", "An unexpected error occurred"
+        );
+
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(body);
+    }
+}
