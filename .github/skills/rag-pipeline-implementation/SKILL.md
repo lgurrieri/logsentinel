@@ -39,7 +39,7 @@ Log crudo (rawLogSnapshot)
 BeanOutputConverter<ParsedLog> ─→ ParsedLog{serviceName, errorCode, logLevel, summary}
      │
      ▼ Paso 2: EmbeddingService
-EmbeddingModel.embed(text) ─→ float[1536]
+EmbeddingModel.embed(text) ─→ float[N]  (N=768 Ollama/nomic-embed-text por defecto, N=1536 si perfil openai)
      │
      ▼ Paso 3: VectorStore query
 PgVectorStore.similaritySearch() ─→ List<Document> TOP 3
@@ -122,18 +122,20 @@ void should_extract_service_name_from_raw_log() {
 public float[] embed(String text) {
     var response = embeddingModel.embedForResponse(List.of(text));
     var vector = response.getResults().get(0).getOutput();
-    // Verificar dimensión — SIEMPRE 1536 para text-embedding-3-small
-    if (vector.length != 1536) {
+    // Verificar dimensión contra la esperada del perfil de IA activo:
+    // 768 (Ollama/nomic-embed-text, default) o 1536 (OpenAI/text-embedding-3-small)
+    if (vector.length != expectedEmbeddingDimension) {
         throw new EmbeddingDimensionException(
-            "Expected 1536, got " + vector.length);
+            "Expected " + expectedEmbeddingDimension + ", got " + vector.length);
     }
     return vector;
 }
 ```
 
 **Anti-patrón**: Guardar el embedding sin verificar la dimensión.
-**Por qué falla**: Si el modelo cambia (ej: text-embedding-ada-002 → 1536, text-embedding-3-large → 3072),
+**Por qué falla**: Si el modelo cambia (ej: `nomic-embed-text` 768 → `text-embedding-3-small` 1536),
 los vectores se almacenan con dimensión incorrecta y la búsqueda coseno retorna basura sin error visible.
+Cambiar de proveedor/modelo con datos ya persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
 
 ---
 
@@ -163,7 +165,7 @@ public List<RunbookChunk> findSimilarRunbooks(float[] embedding) {
 **Verificar que el índice HNSW existe** (obligatorio — sin esto es O(n) full scan):
 ```sql
 SELECT indexname FROM pg_indexes
-WHERE tablename = 'vector_store' AND indexname LIKE '%embedding%';
+WHERE tablename = 'runbook_chunks' AND indexname LIKE '%embedding%';
 ```
 El índice se crea en `V1__init_schema.sql`. Si no existe → la búsqueda es lenta pero silenciosamente correcta.
 
@@ -213,9 +215,10 @@ public void streamDiagnosis(UUID incidentId, ParsedLog parsedLog,
 }
 ```
 
-**Anti-patrón**: Usar el SDK nativo de OpenAI (`OpenAIClient` o `openai-java`).
-**Por qué falla**: Viola la abstracción de Spring AI. Cambiar el LLM (a Ollama, Anthropic, etc.)
-requeriría reescribir el adapter. Con `ChatClient` es una línea en `application.yml`.
+**Anti-patrón**: Usar el SDK nativo de OpenAI (`OpenAIClient` o `openai-java`) o de Ollama directamente.
+**Por qué falla**: Viola la abstracción de Spring AI. El proveedor activo (Ollama por defecto, OpenAI
+como perfil opcional) se selecciona con `spring.ai.model.chat`/`spring.ai.model.embedding` en
+`application-{ollama,openai}.yml` — una línea de config, sin reescribir el adapter.
 
 ---
 
@@ -251,7 +254,7 @@ huérfano indefinidamente. En producción esto agota el thread pool.
 
 | Racionalización | Realidad |
 |----------------|---------|
-| "Usaré el SDK de OpenAI directamente, es más simple" | Acoplamiento directo. Cambiar el LLM requiere reescribir toda la capa AI. `ChatClient` abstrae esto. |
+| "Usaré el SDK de OpenAI directamente, es más simple" | Acoplamiento directo. El proveedor activo se selecciona por perfil Spring (`ollama`/`openai`); `ChatClient` abstrae esto. |
 | "No hace falta `BeanOutputConverter`, parseo el texto yo" | El LLM puede ser manipulado para devolver texto libre. `BeanOutputConverter` falla seguro. |
 | "El `SseEmitter` no necesita timeout, el cliente cierra la conexión" | El cliente puede desconectarse sin cerrar limpiamente. Sin timeout el hilo queda bloqueado. |
 | "El índice HNSW lo agrego después, primero que funcione" | Sin índice HNSW, cada búsqueda es O(n) full scan. Con 10K runbook chunks es perceptiblemente lento. |
@@ -270,7 +273,7 @@ huérfano indefinidamente. En producción esto agota el thread pool.
 
 - [ ] `ParsedLog` es un `record` (no clase con @Data)
 - [ ] `BeanOutputConverter.getFormat()` está en el system prompt
-- [ ] Dimensión del embedding verificada: `vector.length == 1536`
+- [ ] Dimensión del embedding verificada contra la esperada del perfil activo (768 Ollama / 1536 OpenAI)
 - [ ] Índice HNSW existe en `runbook_chunks.embedding`
 - [ ] `SseEmitter` construido con timeout `new SseEmitter(30_000L)`
 - [ ] `emitter.complete()` está en bloque `finally`

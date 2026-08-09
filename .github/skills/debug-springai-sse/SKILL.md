@@ -12,7 +12,7 @@ description: >
 
 El stack async de LogSentinel (Spring AI + SSE + pgvector) es el más difícil de debuggear
 porque los errores pueden ocurrir silenciosamente en hilos distintos al request principal.
-Esta skill guía el diagnóstico sistemático de los 4 modos de falla más comunes.
+Esta skill guía el diagnóstico sistemático de los 5 modos de falla más comunes.
 
 ## Cuándo usar
 
@@ -106,16 +106,18 @@ logging:
 
 ```bash
 # Reiniciar con logs DEBUG y hacer una petición
-cd backend && mvn spring-boot:run -Dspring.profiles.active=dev 2>&1 | grep -E "ERROR|Spring AI|OpenAI"
+cd backend && mvn spring-boot:run -Dspring.profiles.active=dev,ollama 2>&1 | grep -E "ERROR|Spring AI|Ollama|OpenAI"
 ```
 
 **Causas probables y fixes**:
 
 | Causa | Síntoma en logs | Fix |
 |-------|----------------|-----|
-| API key inválida | `401 Unauthorized from OpenAI` | Verificar `SPRING_AI_OPENAI_API_KEY` en `.env.dev` |
-| Timeout del LLM | `ReadTimeoutException after 30s` | Aumentar timeout en `application.yml`: `spring.ai.openai.chat.options.timeout=60s` |
-| Modelo no disponible | `404 model not found` | Verificar `gpt-4o` existe en la cuenta de OpenAI |
+| (perfil `ollama`, default) Ollama no está corriendo | `Connection refused: localhost:11434` | `docker compose up ollama -d` o verificar `SPRING_AI_OLLAMA_BASE_URL` |
+| (perfil `ollama`) Modelo aún no descargado | `model "llama3.1" not found` en logs de Ollama | Esperar el pull inicial (`pull-model-strategy: when_missing`) o `docker exec logsentinel-ollama ollama pull llama3.1` |
+| (perfil `openai`, opcional) API key inválida | `401 Unauthorized from OpenAI` | Verificar `SPRING_AI_OPENAI_API_KEY` en `.env` |
+| Timeout del LLM | `ReadTimeoutException after 30s` | Aumentar timeout: `spring.ai.ollama.chat.options.timeout` u `.openai.chat.options.timeout` según perfil activo |
+| (perfil `openai`) Modelo no disponible | `404 model not found` | Verificar `gpt-4o` existe en la cuenta de OpenAI |
 | Error en subscribe() | Sin logs (el error se traga) | Agregar log en el handler de error: `.subscribe(chunk -> ..., error -> log.error("stream error", error), ...)` |
 
 **Diagnóstico en test**:
@@ -185,26 +187,26 @@ o retorna 0 resultados aunque hay datos.
 -- Verificar que el índice HNSW existe
 SELECT indexname, indexdef
 FROM pg_indexes
-WHERE tablename = 'vector_store'
+WHERE tablename = 'runbook_chunks'
 AND indexname LIKE '%embedding%';
 
 -- Si no existe → crear:
-CREATE INDEX idx_vector_store_embedding
-ON vector_store USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX idx_runbook_chunks_embedding
+ON runbook_chunks USING hnsw (embedding vector_cosine_ops);
 
 -- Verificar cantidad de chunks indexados
-SELECT COUNT(*) FROM vector_store;
+SELECT COUNT(*) FROM runbook_chunks;
 
 -- Verificar dimensión de los embeddings almacenados
-SELECT array_length(embedding, 1) FROM vector_store LIMIT 1;
--- Debe ser 1536 para text-embedding-3-small
+SELECT array_length(embedding, 1) FROM runbook_chunks LIMIT 1;
+-- Debe coincidir con el perfil activo: 768 (Ollama/nomic-embed-text) o 1536 (OpenAI/text-embedding-3-small)
 ```
 
 ```bash
 # Habilitar log de queries SQL para ver la query generada
 # En application-dev.yml: spring.jpa.show-sql: true
 # Buscar la query de búsqueda vectorial:
-grep "vector_store" backend/logs/spring.log | grep "ORDER BY"
+grep "runbook_chunks" backend/logs/spring.log | grep "ORDER BY"
 ```
 
 **Causas y fixes**:
@@ -212,20 +214,36 @@ grep "vector_store" backend/logs/spring.log | grep "ORDER BY"
 | Causa | Fix |
 |-------|-----|
 | Sin índice HNSW | Crear el índice con `vector_cosine_ops` |
-| Dimensión incorrecta (no 1536) | Verificar `spring.ai.openai.embedding.options.dimensions=1536` |
+| Dimensión incorrecta | Verificar que coincide con el perfil activo: `spring.ai.ollama.embedding.options.model=nomic-embed-text` (768) u `.openai.embedding.options.model=text-embedding-3-small` (1536) |
 | `initialize-schema: true` recreó la tabla sin el índice | Cambiar a `false` y gestionar con Flyway |
 | Threshold de similitud muy alto | Bajar de 0.9 a 0.7 en `SearchRequest.withSimilarityThreshold(0.7)` |
-| 0 chunks en vector_store | Verificar que el seed data se ejecutó correctamente |
+| 0 chunks en `runbook_chunks` | Verificar que el seed data se ejecutó correctamente |
 
 **Test de diagnóstico rápido**:
 ```sql
 -- Buscar un chunk manualmente con un vector de ejemplo
 SELECT content,
        (embedding <=> '[0.1, 0.2, ...]'::vector) AS distance
-FROM vector_store
+FROM runbook_chunks
 ORDER BY distance ASC
 LIMIT 3;
 ```
+
+---
+
+## Modo de falla 5: Ollama no disponible (perfil `ollama`, default)
+
+**Síntoma**: El backend falla al arrancar o al primer request de IA con `Connection refused`
+contra `SPRING_AI_OLLAMA_BASE_URL`, o el modelo tarda mucho / falla la primera vez.
+
+**Causas y fixes**:
+
+| Causa | Síntoma | Fix |
+|-------|---------|-----|
+| Servicio `ollama` no está corriendo | `Connection refused: localhost:11434` (o `ollama:11434` en compose) | `docker compose up ollama -d`; verificar `docker compose ps` healthy |
+| Modelo todavía no descargado (primer arranque) | Latencia alta o `model not found` momentáneo | `pull-model-strategy: when_missing` lo descarga automáticamente — requiere red la primera vez; verificar con `docker exec logsentinel-ollama ollama list` |
+| OOM al descargar/correr un modelo grande en CI | El job de CI muere o el contenedor `ollama` se reinicia (`OOMKilled`) | Usar modelos livianos en CI (`nomic-embed-text`, `llama3.1` en su variante más chica) y asignar memoria suficiente al runner/Testcontainer |
+| Volumen `ollama_data` no persistido entre runs | Cada arranque re-descarga el modelo | Confirmar que el volumen está montado (`docker compose config` muestra `ollama_data:/root/.ollama`) |
 
 ---
 
@@ -235,6 +253,7 @@ LIMIT 3;
 |----------------|---------|
 | "Reinicio el servidor y funciona" | El restart libera los hilos huérfanos. El bug sigue ahí y volverá. Reproducir con test. |
 | "Es problema de la API de OpenAI, no del código" | Puede ser. Verificar con curl directo primero. Si el curl funciona, el bug es local. |
+| "Es problema de Ollama, no del código" | Verificar que el servicio está healthy (`docker compose ps`) y el modelo descargado (`ollama list`) antes de asumir un bug de código. |
 | "El error solo pasa en producción" | Reproducir localmente con Testcontainers + `@MockBean` del LLM. |
 | "Agregaré logs después de hacer funcionar" | Los logs son el único diagnóstico en async. Sin logs, el error es invisible. |
 

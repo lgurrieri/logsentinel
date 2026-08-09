@@ -13,11 +13,21 @@ spring:
     locations: classpath:db/migration
 
   ai:
-    openai:
-      api-key: test-key-mock
+    model:
+      chat: ollama
+      embedding: ollama
+    ollama:
+      base-url: http://localhost:11434
       chat:
         options:
-          model: gpt-4o
+          model: llama3.1
       embedding:
         options:
-          model: text-embedding-3-small
+          model: nomic-embed-text
+    vectorstore:
+      pgvector:
+        table-name: runbook_chunks
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 768
+        initialize-schema: false

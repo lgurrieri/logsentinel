@@ -42,8 +42,20 @@ services:
       retries: 5
       start_period: 30s
 
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
 volumes:
   postgres_data:
+  ollama_data:
 ```
 
 ### `docker-compose.dev.yml` (override desarrollo local)
@@ -52,6 +64,9 @@ services:
   db:
     ports:
       - "5432:5432"    # expuesto solo en dev
+  ollama:
+    ports:
+      - "11434:11434"  # expuesto solo en dev, para debug
   backend:
     build:
       context: ./backend
@@ -61,10 +76,13 @@ services:
     env_file:
       - ./backend/.env.dev
     environment:
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: dev,ollama   # Ollama por defecto — sin API key requerida
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/${POSTGRES_DB}
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
     depends_on:
       db:
+        condition: service_healthy
+      ollama:
         condition: service_healthy
 ```
 
@@ -76,9 +94,12 @@ services:
       context: ./backend
       target: production    # imagen final multi-stage
     environment:
-      SPRING_PROFILES_ACTIVE: staging
+      # AI_PROVIDER_PROFILE: "openai" (cloud, requiere SPRING_AI_OPENAI_API_KEY)
+      #                    o "ollama" (self-hosted, sin secreto)
+      SPRING_PROFILES_ACTIVE: staging,${AI_PROVIDER_PROFILE:-openai}
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL}
       SPRING_AI_OPENAI_API_KEY: ${SPRING_AI_OPENAI_API_KEY}
+      SPRING_AI_OLLAMA_BASE_URL: ${SPRING_AI_OLLAMA_BASE_URL}
     restart: unless-stopped
 ```
 
@@ -117,9 +138,8 @@ spring:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/logsentinel}
   jpa:
     show-sql: true
-  ai:
-    openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY}
+  # Proveedor de IA: activar junto al perfil de entorno, ej. SPRING_PROFILES_ACTIVE=dev,ollama
+  # Config de ai.* vive en application-ollama.yml (default, sin secreto) / application-openai.yml (opcional)
 logging:
   level:
     com.logsentinel: DEBUG
@@ -134,9 +154,8 @@ spring:
     url: ${SPRING_DATASOURCE_URL}    # obligatorio — falla si no está definida
   jpa:
     show-sql: false
-  ai:
-    openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY}
+  # Proveedor de IA: activar junto al perfil de entorno, ej. SPRING_PROFILES_ACTIVE=staging,openai
+  # (cloud, requiere SPRING_AI_OPENAI_API_KEY) o SPRING_PROFILES_ACTIVE=staging,ollama (self-hosted)
 logging:
   level:
     com.logsentinel: INFO
@@ -151,9 +170,8 @@ spring:
     show-sql: false
     hibernate:
       ddl-auto: validate    # NUNCA update/create en prod
-  ai:
-    openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY}
+  # Proveedor de IA: activar junto al perfil de entorno, ej. SPRING_PROFILES_ACTIVE=prod,openai
+  # (cloud, requiere SPRING_AI_OPENAI_API_KEY) o SPRING_PROFILES_ACTIVE=prod,ollama (self-hosted)
 logging:
   level:
     com.logsentinel: WARN
@@ -268,7 +286,8 @@ main      → CI completo + deploy a prod CON aprobación manual
 ## Matriz de secretos (nunca en código)
 | Variable | dev | staging | prod |
 |----------|-----|---------|------|
-| `SPRING_AI_OPENAI_API_KEY` | `backend/.env.dev` (gitignored) | GitHub Secret (env: staging) | Render Env Var |
+| `SPRING_AI_OPENAI_API_KEY` | no requerido (perfil `ollama` por defecto) | GitHub Secret (env: staging), solo si `AI_PROVIDER_PROFILE=openai` | Render Env Var, solo si perfil `openai` activo |
+| `SPRING_AI_OLLAMA_BASE_URL` | opcional — default `http://ollama:11434` en compose | requerido solo si perfil `ollama` self-hosted | requerido solo si perfil `ollama` self-hosted |
 | `SPRING_DATASOURCE_PASSWORD` | `backend/.env.dev` | GitHub Secret | Render Env Var |
 | `POSTGRES_PASSWORD` | `backend/.env.dev` | GitHub Secret | Render Env Var |
 | `RENDER_STAGING_WEBHOOK_URL` | — | GitHub Secret | — |
@@ -304,10 +323,10 @@ grep -r "api-key\|password\|secret" backend/src/main/ --include="*.java" --inclu
 
 ### Paso 4: Verificar el entorno localmente (solo dev)
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up db -d
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up db ollama -d
 sleep 5
-docker compose ps  # db debe estar "healthy"
-cd backend && mvn spring-boot:run -Dspring.profiles.active=dev &
+docker compose ps  # db y ollama deben estar "healthy"
+cd backend && mvn spring-boot:run -Dspring.profiles.active=dev,ollama &
 curl -s http://localhost:8080/actuator/health | jq .status
 # Esperado: "UP"
 ```
@@ -328,6 +347,7 @@ Confirmar que `.github/workflows/ci.yml` tiene los 3 jobs en orden:
 ## Red Flags
 
 - `SPRING_AI_OPENAI_API_KEY=sk-...` en cualquier archivo que podría llegar al repo
+- Exigir `SPRING_AI_OPENAI_API_KEY` para que `dev` arranque — el perfil `ollama` (default) no debe requerirla
 - `spring.jpa.hibernate.ddl-auto: update` en staging o prod
 - `docker-compose.yml` con valores hardcodeados en lugar de `${VARIABLE}`
 - Pipeline de CI que omite el security-scan job

@@ -1,0 +1,37 @@
+# ===================================================
+# LogSentinel Backend - Perfil de IA: Ollama (local, por defecto)
+# ===================================================
+# Activar con SPRING_PROFILES_ACTIVE=<entorno>,ollama
+# No requiere API key: los modelos corren localmente (docker-compose service "ollama"
+# o una instancia Ollama en localhost:11434).
+
+spring:
+  ai:
+    model:
+      chat: ollama
+      embedding: ollama
+
+    ollama:
+      base-url: ${SPRING_AI_OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: llama3.1
+          temperature: 0.2
+      embedding:
+        options:
+          model: nomic-embed-text
+      init:
+        pull-model-strategy: when_missing
+        embedding:
+          additional-models: [nomic-embed-text]
+
+    # --- Spring AI: PGVector Store ---
+    # Dimensión 768 = nomic-embed-text. Cambiar de proveedor luego de tener datos
+    # persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
+    vectorstore:
+      pgvector:
+        table-name: runbook_chunks
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+        dimensions: 768
+        initialize-schema: false

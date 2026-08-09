@@ -33,26 +33,19 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true
 
-  # --- Spring AI: OpenAI ---
+  # --- Spring AI: el proveedor (Ollama por defecto / OpenAI opcional) se activa
+  #     vía perfil Spring Boot — ver application-ollama.yml / application-openai.yml.
+  #     Activar con SPRING_PROFILES_ACTIVE=<entorno>,ollama (o ,openai).
   ai:
-    openai:
-      api-key: ${SPRING_AI_OPENAI_API_KEY}
-      chat:
-        options:
-          model: gpt-4o
-          temperature: 0.2
-          max-tokens: 2048
-      embedding:
-        options:
-          model: text-embedding-3-small
-
-    # --- Spring AI: PGVector Store ---
-    vectorstore:
-      pgvector:
-        index-type: HNSW
-        distance-type: COSINE_DISTANCE
-        dimensions: 1536
-        initialize-schema: false
+    model:
+      # LogSentinel solo usa ChatModel/EmbeddingModel. Sin esto, el starter de OpenAI
+      # autoconfigura sus otros modelos (audio, imagen, moderación) igual — con
+      # matchIfMissing=true — y falla al arrancar sin API key bajo el perfil ollama.
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
 
   # --- Async: Configuración de hilos para SSE ---
   task:

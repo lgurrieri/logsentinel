@@ -13,11 +13,22 @@
 
 ### `LOG-CORE-BE-00`: Inicialización del Proyecto Backend y Clientes de IA
 
-* **Descripción:** Proveer el esqueleto del backend con las dependencias core y la integración inicial con el SDK oficial de OpenAI.
+* **Descripción:** Proveer el esqueleto del backend con las dependencias core y la integración inicial con Spring AI (`ChatClient`/`EmbeddingModel`), sin acoplarse a ningún SDK nativo de proveedor.
 * **Criterios de Aceptación Técnicos:**
 * Inicializar el proyecto Spring Boot con dependencias para Web, JPA, Validation y PostgreSQL.
-* Configurar el cliente de OpenAI inyectando de forma segura las llaves API utilizando variables de entorno de sistema.
+* Configurar Spring AI inyectando de forma segura las credenciales de proveedor (API keys, base URLs) utilizando variables de entorno de sistema.
 * **Automatización del DoD:** Configurar **JaCoCo** en el archivo de construcción del proyecto (`pom.xml` o `build.gradle`) parametrizado de manera estricta para **romper el build si la cobertura general baja del 95%**.
+
+
+
+### `LOG-CORE-INFRA-01`: Proveedor de IA Local por Defecto (Ollama) con OpenAI como Perfil Opcional
+
+* **Descripción:** Hardening de infraestructura sobre `LOG-CORE-BE-00`: evitar que el desarrollo local y el CI dependan de una API key de OpenAI real, introduciendo **Ollama** como proveedor de IA local por defecto (chat + embeddings) y preservando OpenAI como perfil opcional para despliegues cloud (prod/staging).
+* **Criterios de Aceptación Técnicos:**
+* Agregar `spring-ai-starter-model-ollama` al `pom.xml`, gestionado por el `spring-ai-bom` ya presente, sin eliminar `spring-ai-starter-model-openai`.
+* Separar la configuración de IA en perfiles Spring Boot ortogonales al entorno (`application-ollama.yml` / `application-openai.yml`), seleccionando el bean activo vía `spring.ai.model.chat` / `spring.ai.model.embedding` para evitar `NoUniqueBeanDefinitionException` al convivir ambos starters en el classpath.
+* `docker-compose.yml` levanta un servicio `ollama` local (perfil `ollama` activo por defecto en `dev`) con healthcheck y volumen persistente para el modelo descargado.
+* Ningún flujo de desarrollo local ni de CI debe requerir `SPRING_AI_OPENAI_API_KEY` para arrancar o testear el backend.
 
 
 
@@ -109,7 +120,7 @@
 * **Descripción:** Configurar el esquema para guardar vectores embebidos en PostgreSQL y habilitar búsquedas espaciales eficientes.
 * **Criterios de Aceptación Técnicos:**
 * Habilitar la extensión `CREATE EXTENSION IF NOT EXISTS vector;` en la base de datos a través de migraciones de código.
-* Crear la tabla `runbooks` agregando una columna de tipo `vector(1536)` para guardar los embeddings generados por el modelo de OpenAI.
+* Crear la tabla `runbook_chunks` (fragmentos vectorizados, con `runbooks` como tabla de cabecera/metadato) agregando una columna de tipo `vector(N)`, donde N coincide con la dimensión del modelo de embeddings activo (768 por defecto con Ollama/`nomic-embed-text`; 1536 si el perfil `openai` está activo). Cambiar de proveedor luego de tener datos persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
 * Crear un índice de tipo `HNSW` con métrica de distancia de coseno para optimizar las consultas a gran escala.
 
 
@@ -118,7 +129,7 @@
 
 * **Descripción:** Implementar la lógica del servicio encargado de transformar texto en vectores y coordinar la estrategia resiliente de búsqueda.
 * **Criterios de Aceptación Técnicos:**
-* Desarrollar el servicio encargado de llamar a la API de OpenAI para vectorizar el log del incidente.
+* Desarrollar el servicio encargado de invocar el `EmbeddingModel` de Spring AI (Ollama local por defecto; OpenAI vía perfil opcional) para vectorizar el log del incidente.
 * Diseñar la query nativa JPA que extraiga los runbooks con mayor proximidad vectorial utilizando operadores de similitud de coseno (`<=>`).
 * Implementar un bloque defensivo `try-catch`: si la llamada remota de embeddings falla por timeout o cuotas, activar inmediatamente una búsqueda tradicional Full-Text (`tsvector`) en la base relacional para que el sistema nunca retorne un arreglo vacío.
 
@@ -147,10 +158,10 @@
 
 #### `LOG-US3-BE-01`: Endpoint de Streaming de Diagnósticos vía Server-Sent Events (SSE)
 
-* **Descripción:** Configurar un endpoint reactivo que consuma la respuesta en streaming de OpenAI y la exponga en tiempo real hacia el navegador.
+* **Descripción:** Configurar un endpoint reactivo que consuma el streaming del `ChatClient` de Spring AI (Ollama local por defecto; OpenAI vía perfil opcional) y lo exponga en tiempo real hacia el navegador.
 * **Criterios de Aceptación Técnicos:**
 * Desarrollar el endpoint `GET /api/v1/incidents/{id}/diagnostic/stream` utilizando arquitecturas asíncronas no bloqueantes.
-* Consumir la API de OpenAI configurando el flag `stream = true`.
+* Consumir el `ChatClient` de Spring AI configurando el flag `stream = true`, provider-agnostic respecto al perfil activo (`ollama`/`openai`).
 * Canalizar secuencialmente los fragmentos de texto recibidos emitiendo eventos con el tipo de contenido estándar `text/event-stream`.
 
 

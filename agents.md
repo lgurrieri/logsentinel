@@ -18,7 +18,7 @@
 | Backend | Java 25, Spring Boot 4.1.0, Spring AI 2.0.0 |
 | Persistencia | PostgreSQL 16 + extensión `pgvector` |
 | Migraciones | Flyway |
-| IA / Embeddings | OpenAI `gpt-4o` + `text-embedding-3-small` (via Spring AI) |
+| IA / Embeddings | Ollama local `llama3.1` + `nomic-embed-text` (default) · OpenAI `gpt-4o` + `text-embedding-3-small` (perfil opcional), vía Spring AI |
 | Frontend | React 18+, TypeScript, Vite, Tailwind CSS *(pendiente de inicializar)* |
 | Tests | JUnit 5, Mockito, Testcontainers (PostgreSQL) |
 | Despliegue objetivo | Vercel (frontend) + Render (backend+BD) |
@@ -29,29 +29,31 @@
 
 ### Prerrequisitos
 - Java 25 (Temurin), Maven 3.9+
-- Docker y Docker Compose (requeridos para la BD y para tests de integración)
-- API Key de OpenAI
+- Docker y Docker Compose (requeridos para la BD, Ollama local y tests de integración)
+- API Key de OpenAI — **solo si** se activa el perfil opcional `openai`; el perfil `ollama` (por defecto) no requiere ninguna key
 
 ### 1. Variables de entorno (backend)
 ```bash
 cp backend/.env.example backend/.env
-# Editar backend/.env y completar SPRING_AI_OPENAI_API_KEY
+# Perfil ollama (default): no requiere completar nada para arrancar local
+# Perfil openai (opcional): completar SPRING_AI_OPENAI_API_KEY y activar SPRING_PROFILES_ACTIVE=dev,openai
 ```
 
 Variables gestionadas (ver `backend/.env.example`):
-- `SPRING_AI_OPENAI_API_KEY` — clave de OpenAI
+- `SPRING_AI_OLLAMA_BASE_URL` — opcional, default: `http://localhost:11434`
+- `SPRING_AI_OPENAI_API_KEY` — clave de OpenAI, solo si el perfil `openai` está activo
 - `SPRING_DATASOURCE_URL` — default: `jdbc:postgresql://localhost:5432/logsentinel`
 - `SPRING_DATASOURCE_USERNAME` / `SPRING_DATASOURCE_PASSWORD` — default: `logsentinel`
 
-### 2. Base de datos local (Docker)
+### 2. Base de datos y modelos de IA locales (Docker)
 ```bash
-docker compose up db -d
+docker compose up db ollama -d
 ```
 
 ### 3. Ejecutar el backend
 ```bash
 cd backend
-mvn spring-boot:run
+SPRING_PROFILES_ACTIVE=dev,ollama mvn spring-boot:run
 # API:       http://localhost:8080
 # Swagger:   http://localhost:8080/swagger-ui.html
 # Actuator:  http://localhost:8080/actuator/health
@@ -95,7 +97,7 @@ com.logsentinel
     │   └── out/
     │       ├── persistence/ # JPA/Hibernate (PostgreSQL relacional)
     │       ├── vectorstore/ # pgvector via Spring AI PgVectorStore
-    │       └── ai/          # ChatClient, EmbeddingClient (OpenAI)
+    │       └── ai/          # ChatClient, EmbeddingClient (Ollama por defecto / OpenAI opcional)
     └── config/
 ```
 
@@ -168,10 +170,10 @@ public class Incident {
 
 ```
 Log crudo → LogParserService (BeanOutputConverter → ParsedLog tipado)
-         → EmbeddingService (text-embedding-3-small → float[1536])
-         → VectorStore query (pgvector distancia coseno, TOP 3 chunks)
+         → EmbeddingService (EmbeddingModel de Spring AI → float[N]; N=768 con Ollama/nomic-embed-text por defecto, N=1536 si el perfil openai está activo)
+         → VectorStore query (pgvector distancia coseno sobre runbook_chunks, TOP 3 chunks)
          → AgentOrchestrator (prompt augmentation: system prompt SRE + runbooks)
-         → ChatClient stream (gpt-4o, stream=true)
+         → ChatClient stream (Ollama/llama3.1 por defecto, OpenAI/gpt-4o si el perfil openai está activo; stream=true)
          → SseEmitter → Frontend EventSource (token a token)
          → RemediationService (CompletableFuture + @Transactional atómico)
 ```
@@ -181,7 +183,7 @@ Log crudo → LogParserService (BeanOutputConverter → ParsedLog tipado)
 ## Estrategia de Testing
 
 - **Unitarios**: mockear puertos de salida con Mockito. El dominio y casos de uso no deben requerir Spring context (no `@SpringBootTest`)
-- **Integración**: usar `@SpringBootTest` + Testcontainers. En `application-test.yml` la `api-key` es `test-key-mock`; mockear `ChatClient` y `EmbeddingClient` con `@MockBean`
+- **Integración**: usar `@SpringBootTest` + Testcontainers. `application-test.yml` activa el perfil `ollama` sin requerir API key; mockear `ChatClient` y `EmbeddingClient` con `@MockBean`
 - **E2E (pendiente)**: Playwright — flujo: seleccionar escenario → analizar → verificar SSE → ejecutar remediación → estado `RESOLVED`
 
 ### ⚠ Pitfall: Testcontainers 2.x — artifact IDs renombrados

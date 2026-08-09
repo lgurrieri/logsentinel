@@ -69,7 +69,15 @@
         </dependency>
 
         <!-- ============================= -->
-        <!-- SPRING AI 2.0: OpenAI (Chat + Embeddings) -->
+        <!-- SPRING AI 2.0: Ollama (Chat + Embeddings) — proveedor local por defecto -->
+        <!-- ============================= -->
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-ollama</artifactId>
+        </dependency>
+
+        <!-- ============================= -->
+        <!-- SPRING AI 2.0: OpenAI (Chat + Embeddings) — perfil opcional (cloud) -->
         <!-- ============================= -->
         <dependency>
             <groupId>org.springframework.ai</groupId>

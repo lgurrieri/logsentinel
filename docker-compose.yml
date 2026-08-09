@@ -22,6 +22,24 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------
+  # Ollama: proveedor de IA local por defecto (chat + embeddings)
+  # -------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: logsentinel-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # -------------------------------------------------------
   # Backend Spring Boot
   # -------------------------------------------------------
   backend:
@@ -32,14 +50,18 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
     env_file:
       - ./backend/.env
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/logsentinel
-      SPRING_PROFILES_ACTIVE: dev
+      SPRING_PROFILES_ACTIVE: dev,ollama
+      SPRING_AI_OLLAMA_BASE_URL: http://ollama:11434
     ports:
       - "8080:8080"
     restart: unless-stopped
 
 volumes:
   pgdata:
+  ollama_data:
