@@ -56,4 +56,15 @@ class RunbookChunkJpaEntityTest {
 
         assertThat(first.hashCode()).isEqualTo(second.hashCode());
     }
+
+    @Test
+    @DisplayName("should map to a domain RunbookChunk carrying id and content (LOG-US2-BE-02)")
+    void should_map_to_domain_runbook_chunk() {
+        var entity = new RunbookChunkJpaEntity("check disk usage and clear /var/log if above 90%", new float[768]);
+
+        var domain = entity.toDomain();
+
+        assertThat(domain.content()).isEqualTo("check disk usage and clear /var/log if above 90%");
+        assertThat(domain.id()).isNull(); // transient entity, id not yet assigned by JPA
+    }
 }
