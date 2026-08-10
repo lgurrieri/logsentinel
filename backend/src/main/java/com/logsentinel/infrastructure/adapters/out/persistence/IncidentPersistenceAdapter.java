@@ -23,8 +23,6 @@ public class IncidentPersistenceAdapter implements IncidentRepository {
     public Incident save(Incident incident) {
         IncidentJpaEntity entity = toJpaEntity(incident);
         IncidentJpaEntity saved = jpaRepository.save(entity);
-        // Force flush to populate generated fields (id, created_at)
-        jpaRepository.flush();
         return toDomain(saved);
     }
 
