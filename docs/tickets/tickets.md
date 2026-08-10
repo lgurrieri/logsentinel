@@ -120,7 +120,7 @@
 * **Descripción:** Configurar el esquema para guardar vectores embebidos en PostgreSQL y habilitar búsquedas espaciales eficientes.
 * **Criterios de Aceptación Técnicos:**
 * Habilitar la extensión `CREATE EXTENSION IF NOT EXISTS vector;` en la base de datos a través de migraciones de código.
-* Crear la tabla `runbook_chunks` (fragmentos vectorizados, con `runbooks` como tabla de cabecera/metadato) agregando una columna de tipo `vector(N)`, donde N coincide con la dimensión del modelo de embeddings activo (768 por defecto con Ollama/`nomic-embed-text`; 1536 si el perfil `openai` está activo). Cambiar de proveedor luego de tener datos persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
+* Crear la tabla `runbook_chunks` (fragmentos vectorizados) agregando una columna de tipo `vector(N)`, donde N coincide con la dimensión del modelo de embeddings activo (768 por defecto con Ollama/`nomic-embed-text`; 1536 si el perfil `openai` está activo). Cambiar de proveedor luego de tener datos persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
 * Crear un índice de tipo `HNSW` con métrica de distancia de coseno para optimizar las consultas a gran escala.
 
 

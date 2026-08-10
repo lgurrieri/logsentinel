@@ -52,7 +52,19 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
-            <scope>runtime</scope>
+            <!-- Scope de compilación (no "runtime"): el Hibernate UserType custom de
+                 pgvector (VectorType) referencia en tiempo de compilación la jerarquía
+                 de com.pgvector.PGvector, que extiende org.postgresql.util.PGobject. -->
+        </dependency>
+
+        <!-- pgvector-java: helper para mapear float[] <-> tipo nativo `vector` de pgvector
+             en el driver JDBC (usado por el Hibernate UserType custom, NO por el
+             VectorStore/PgVectorStore autoconfigurado de Spring AI — ver Opción B en
+             .claude/state/orchestration/US2.md). -->
+        <dependency>
+            <groupId>com.pgvector</groupId>
+            <artifactId>pgvector</artifactId>
+            <version>0.1.6</version>
         </dependency>
 
         <!-- ============================= -->
@@ -82,14 +94,6 @@
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-openai</artifactId>
-        </dependency>
-
-        <!-- ============================= -->
-        <!-- SPRING AI 2.0: PGVector Store  -->
-        <!-- ============================= -->
-        <dependency>
-            <groupId>org.springframework.ai</groupId>
-            <artifactId>spring-ai-starter-vector-store-pgvector</artifactId>
         </dependency>
 
         <!-- ============================= -->

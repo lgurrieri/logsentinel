@@ -56,6 +56,12 @@ spring:
         queue-capacity: 100
       thread-name-prefix: logsentinel-async-
 
+# --- LogSentinel: configuración propia de la aplicación ---
+logsentinel:
+  rag:
+    # Cantidad de fragmentos (runbook_chunks) a recuperar por búsqueda semántica (US2).
+    top-k: 3
+
 # --- Actuator: Endpoints de salud y métricas ---
 management:
   endpoints:

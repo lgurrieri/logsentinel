@@ -21,13 +21,7 @@ spring:
         options:
           model: text-embedding-3-small
 
-    # --- Spring AI: PGVector Store ---
-    # Dimensión 1536 = text-embedding-3-small. Cambiar de proveedor luego de tener datos
-    # persistidos requiere backfill/re-embedding, no es un cambio de config en caliente.
-    vectorstore:
-      pgvector:
-        table-name: runbook_chunks
-        index-type: HNSW
-        distance-type: COSINE_DISTANCE
-        dimensions: 1536
-        initialize-schema: false
+# Nota: la búsqueda vectorial NO usa el VectorStore autoconfigurado de Spring AI —
+# se implementa con Flyway (schema) + query nativa JPA (operador `<=>` de pgvector).
+# Dimensión de embeddings esperada bajo este perfil: 1536 (text-embedding-3-small). Cambiar
+# de proveedor luego de tener datos persistidos requiere backfill/re-embedding.

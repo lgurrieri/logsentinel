@@ -180,7 +180,9 @@ void should_fail_safely_when_llm_returns_free_text() {
 ## Modo de falla 4: pgvector query lenta o resultados incorrectos
 
 **Síntoma**: La búsqueda de runbooks tarda >2s, o retorna chunks que no son relevantes,
-o retorna 0 resultados aunque hay datos.
+o retorna 0 resultados aunque hay datos. Recordar que esta búsqueda es una query nativa
+JPA (operador `<=>` de pgvector) sobre `runbook_chunks` — no hay `VectorStore`/`PgVectorStore`
+autoconfigurado de Spring AI en este proyecto; el esquema se gestiona íntegramente con Flyway.
 
 **Diagnóstico**:
 ```sql
@@ -190,9 +192,9 @@ FROM pg_indexes
 WHERE tablename = 'runbook_chunks'
 AND indexname LIKE '%embedding%';
 
--- Si no existe → crear:
-CREATE INDEX idx_runbook_chunks_embedding
-ON runbook_chunks USING hnsw (embedding vector_cosine_ops);
+-- Si no existe → revisar la migración Flyway de LOG-US2-DB-01 (no crear el índice a mano):
+-- CREATE INDEX idx_runbook_chunks_embedding
+-- ON runbook_chunks USING hnsw (embedding vector_cosine_ops);
 
 -- Verificar cantidad de chunks indexados
 SELECT COUNT(*) FROM runbook_chunks;
@@ -213,10 +215,10 @@ grep "runbook_chunks" backend/logs/spring.log | grep "ORDER BY"
 
 | Causa | Fix |
 |-------|-----|
-| Sin índice HNSW | Crear el índice con `vector_cosine_ops` |
+| Sin índice HNSW | Verificar que la migración Flyway `LOG-US2-DB-01` se aplicó (`flyway_schema_history`); no crear el índice manualmente fuera de una migración |
 | Dimensión incorrecta | Verificar que coincide con el perfil activo: `spring.ai.ollama.embedding.options.model=nomic-embed-text` (768) u `.openai.embedding.options.model=text-embedding-3-small` (1536) |
-| `initialize-schema: true` recreó la tabla sin el índice | Cambiar a `false` y gestionar con Flyway |
-| Threshold de similitud muy alto | Bajar de 0.9 a 0.7 en `SearchRequest.withSimilarityThreshold(0.7)` |
+| El fallback Full-Text (`tsvector`) nunca se activa aunque el proveedor de embeddings falle | Verificar que el `try-catch` envuelve la llamada a `EmbeddingModel`, no la query nativa — ver `rag-pipeline-implementation/SKILL.md` Paso 3 |
+| Top K hardcodeado en vez de leído de config | Verificar `logsentinel.rag.top-k` en `application.yml` (default 3) — no un literal en el adapter |
 | 0 chunks en `runbook_chunks` | Verificar que el seed data se ejecutó correctamente |
 
 **Test de diagnóstico rápido**:
@@ -226,7 +228,7 @@ SELECT content,
        (embedding <=> '[0.1, 0.2, ...]'::vector) AS distance
 FROM runbook_chunks
 ORDER BY distance ASC
-LIMIT 3;
+LIMIT 3; -- en la implementación real, LIMIT viene de logsentinel.rag.top-k
 ```
 
 ---

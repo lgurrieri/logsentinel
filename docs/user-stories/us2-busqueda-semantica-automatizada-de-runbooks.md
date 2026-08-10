@@ -24,7 +24,7 @@ Escenario: Recuperación exitosa de fragmentos de Runbooks por similitud semánt
 
   Cuando el servicio interno ejecuta la búsqueda por coseno usando el embedding del log del incidente
 
-  Entonces la consulta debe retornar exactamente un máximo de 3 registros de la tabla "runbook_chunks"
+  Entonces la consulta debe retornar un máximo de Top K registros (parametrizable en archivo de propiedades, valor por defecto 3) de la tabla "runbook_chunks"
 
   Y los registros deben estar ordenados descendentemente por su cercanía geométrica (menor distancia de coseno).
 
@@ -36,6 +36,8 @@ Escenario: Recuperación exitosa de fragmentos de Runbooks por similitud semánt
 * **Capa de Datos (SQL Nativo en JPA):** Uso del operador de distancia de coseno `<=>` provisto por la extensión `pgvector` de PostgreSQL.
 * **Consulta SQL de Referencia:**
 ```sql
+-- LIMIT parametrizado por configuración (ej. `logsentinel.rag.top-k`, default 3),
+-- no hardcodeado en la implementación real.
 SELECT id, content, (embedding <=> ?1::vector) as distance 
 FROM runbook_chunks 
 ORDER BY distance ASC 
