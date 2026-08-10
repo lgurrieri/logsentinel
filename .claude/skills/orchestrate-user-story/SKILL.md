@@ -129,6 +129,38 @@ Registrar la respuesta en el ledger para no volver a preguntar en el futuro.
 
 ---
 
+## PASO 2.5 — Análisis de consistencia documental (OBLIGATORIO)
+
+Antes de mostrar el plan para aprobación (PASO 4), invocar siempre al agente
+`logsentinel-docs-analyst` sobre la user story en curso:
+
+```
+Agent(
+  subagent_type: logsentinel-docs-analyst,
+  prompt: "Analizar consistencia documental de {US_ID}: comparar docs/openapi: 3.0.yml
+           contra docs/tickets/tickets.md y docs/user-stories/{archivo}.md. Reportar
+           drift de naming/paths/enums/tablas.",
+  run_in_background: false
+)
+```
+
+Este paso **no es opcional** — se ejecuta siempre, incluso si el humano no lo pidió
+explícitamente.
+
+1. Parsear el reporte del agente (hallazgos de drift, si los hay).
+2. Si no hay hallazgos → continuar directo a PASO 3.
+3. Si hay hallazgos → mostrarlos al humano (tabla completa) y `AskUserQuestion` con las
+   mismas opciones de resolución que PASO 6.5:
+   - "Alinear el ticket al contrato"
+   - "Alinear el contrato al ticket (nuevo ticket, ver convención `LOG-CORE-INFRA-01`)"
+   - "Aprobar excepción documentada (registrar `KNOWN ISSUE` cruzado, como `LOG-US4-BE-02`)"
+   - "Pausar aquí"
+4. Registrar la decisión en el ledger (`.claude/state/orchestration/{US_ID}.md`) antes
+   de continuar, para no volver a preguntar en un retry.
+5. No avanzar a PASO 3/4 con hallazgos de drift sin resolver.
+
+---
+
 ## PASO 3 — Detectar tickets posiblemente ya satisfechos
 
 Para cada ticket del plan:
@@ -225,7 +257,10 @@ Al recibir la respuesta del subagente:
    - El reporte narrativo del subagente (resumido, no pegar logs crudos de mvn/npm)
    - STATUS del bloque estructurado
    - TESTS (passed/failed)
-   - ARCH_GATE y DEVSECOPS_GATE
+   - ARCH_GATE, CONTRACT_GATE y DEVSECOPS_GATE
+   - Si `CONTRACT_GATE: DRIFT_DETECTED` → mostrar el relevamiento completo de
+     `ESCALATION_NOTE` (tabla Aspecto | Dice el ticket | Dice el contrato | Recomendación),
+     no resumido
    - `git diff --stat` (solo estadísticas, no el diff completo)
    - SUGGESTED_COMMIT
 4. Si `git diff --stat` muestra **deletions** en un archivo que pertenecía a un ticket ya
@@ -235,13 +270,23 @@ Al recibir la respuesta del subagente:
 
 ### 6.5 Decisión del humano
 
-**Si STATUS = BLOCKED:**
+**Si CONTRACT_GATE = DRIFT_DETECTED (prioridad sobre cualquier otro STATUS):**
+`AskUserQuestion` con opciones:
+- "Alinear el ticket al contrato"
+- "Alinear el contrato al ticket (nuevo ticket, ver convención `LOG-CORE-INFRA-01`)"
+- "Aprobar excepción documentada (registrar `KNOWN ISSUE` cruzado, como `LOG-US4-BE-02`)"
+- "Pausar aquí"
+
+Registrar la decisión en el ledger (`.claude/state/orchestration/{US_ID}.md`) antes de
+continuar, para no volver a preguntar en un retry.
+
+**Si STATUS = BLOCKED (y CONTRACT_GATE no es DRIFT_DETECTED):**
 `AskUserQuestion` con opciones:
 - "Pedir correcciones al agente"
 - "Descartar cambios de este ticket y reintentar"
 - "Pausar aquí"
 
-**Si STATUS = GREEN o PARTIAL:**
+**Si STATUS = GREEN o PARTIAL (y CONTRACT_GATE no es DRIFT_DETECTED):**
 `AskUserQuestion` con opciones:
 - "Aprobar y continuar al siguiente ticket"
 - "Pedir correcciones al agente"
@@ -339,6 +384,7 @@ FILES_CHANGED:
   - ruta/relativa/archivo2
 TESTS: N passed, M failed
 ARCH_GATE: PASS | FAIL | N/A
+CONTRACT_GATE: OK | DRIFT_DETECTED | N/A
 DEVSECOPS_GATE: PASS | FAIL | PENDING
 SUGGESTED_COMMIT: "tipo(scope): descripción"
 ESCALATION_NOTE: <vacío si no aplica, o texto libre describiendo qué se necesita fuera de scope>
@@ -350,6 +396,7 @@ Campos:
 - **FILES_CHANGED**: lista de paths relativos a la raíz del repo, uno por línea.
 - **TESTS**: conteo de tests ejecutados. `N/A` si es infraestructura pura.
 - **ARCH_GATE**: resultado de checks 1–7 de verify-clean-arch. `N/A` si no aplica.
+- **CONTRACT_GATE**: resultado del gate de reconciliación de contrato OpenAPI (skill `verify-openapi-contract`). `DRIFT_DETECTED` si hay discrepancia sin resolver pendiente de aprobación humana; `N/A` si el agente no genera código de endpoint.
 - **DEVSECOPS_GATE**: resultado de checks 8–12. `PENDING` si los artefactos que verifican aún no existen.
 - **SUGGESTED_COMMIT**: mensaje de commit listo para usar, formato Conventional Commits 1.0.0.
-- **ESCALATION_NOTE**: solo rellenar si STATUS es BLOCKED — describir exactamente qué necesita de otro agente o del humano.
+- **ESCALATION_NOTE**: solo rellenar si STATUS es BLOCKED — describir exactamente qué necesita de otro agente o del humano, o el relevamiento tabla completo si es `CONTRACT_GATE: DRIFT_DETECTED`.

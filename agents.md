@@ -111,6 +111,17 @@ com.logsentinel
 
 ## Convenciones Clave
 
+### Contrato OpenAPI como fuente de verdad
+El contrato ([docs/openapi: 3.0.yml](docs/openapi:%203.0.yml)) prevalece por encima de
+cualquier ticket o user story en cuanto a paths, nombres de DTOs/schemas, enums y status
+codes — **a rajatabla**. Si el ticket dice algo distinto del contrato (naming, campos,
+enums), no se decide unilateralmente "gana el ticket" ni "gana el contrato": se detiene
+la implementación, se produce un relevamiento de la discrepancia y se pide aprobación
+humana explícita antes de escribir código (ver skill `.github/skills/verify-openapi-contract/SKILL.md`
+y el Paso 2 de los agentes implementadores). Excepción: discrepancias ya documentadas en
+ambos lados con el patrón `KNOWN ISSUE` (ej. `RemediationAction.executionStatus` /
+`LOG-US4-BE-02`) no requieren volver a preguntar.
+
 ### Base de Datos y Flyway
 - Migraciones en `backend/src/main/resources/db/migration/`, naming: `V{n}__{descripcion}.sql`
 - `spring.jpa.hibernate.ddl-auto=validate` — Hibernate **solo valida**, nunca modifica el esquema

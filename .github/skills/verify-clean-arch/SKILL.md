@@ -117,6 +117,20 @@ grep -rn "uses: " .github/workflows/ --include="*.yml" | \
 ```
 Resultado esperado: **0 matches** (todas las Actions externas pineadas a SHA de 40 chars).
 
+---
+
+## Check 13: Cumplimiento de contrato OpenAPI (BLOQUEANTE)
+
+Ejecutar el skill `.github/skills/verify-openapi-contract/SKILL.md` sobre los endpoints
+tocados por el cambio bajo revisión: localizar cada path/schema relevante en
+`docs/openapi: 3.0.yml` y comparar método HTTP, path, nombres/tipos de campos, enums y
+status codes contra lo efectivamente implementado.
+
+Resultado esperado: **`OK`** (coincide, o la discrepancia ya está documentada como
+excepción cruzada patrón `KNOWN ISSUE`) — cualquier discrepancia NO documentada es
+`DRIFT_DETECTED` y bloquea la aprobación hasta relevamiento + decisión humana explícita
+(ver protocolo de escalamiento del skill `verify-openapi-contract`).
+
 ## Formato del informe de salida
 ```
 === LogSentinel Architecture + Security Report ===
@@ -133,6 +147,8 @@ Resultado esperado: **0 matches** (todas las Actions externas pineadas a SHA de 
 ✅ Sin secretos en ENV layers: OK
 ⚠️  Workflows sin permissions:: ci.yml (no declarado)
 ✅ Actions pineadas a SHA: OK
+--- Contrato OpenAPI ---
+✅ Check 13 Contrato OpenAPI: OK
 
 RESULTADO: FAIL — 1 error crítico, 2 advertencias
 Resolver antes de abrir el PR.
@@ -141,6 +157,8 @@ Resolver antes de abrir el PR.
 ## Criterio de aprobación
 - 0 errores críticos (Check 1, 2, 3, 5, 8)
 - 0 advertencias bloqueantes (Check 4, 6, 7, 9, 10, 11, 12)
+- Check 13 en `OK` — `DRIFT_DETECTED` es bloqueante al mismo nivel que un error crítico,
+  sin excepción, hasta relevamiento + aprobación humana explícita
 
 Los checks 9–12 solo aplican si los artefactos de infraestructura existen.
 Si `backend/Dockerfile` o `.github/workflows/` no existen, reportar como "pendiente" no como fallo.
@@ -162,6 +180,8 @@ Estas violaciones indican que hay que parar y corregir ANTES de continuar:
 - Un `@RestController` que retorna un tipo `@Entity` directamente
 - `@MockBean` en un test que extiende solo `@ExtendWith(MockitoExtension.class)` (indica violación de capas)
 - `import com.logsentinel.infrastructure.*` en `application/usecases/`
+- Un endpoint implementado con path/schema/enum que contradice `docs/openapi: 3.0.yml`
+  sin relevamiento ni aprobación humana documentada (Check 13)
 
 ## Verificación (checklist de salida)
 
@@ -181,4 +201,8 @@ Estas violaciones indican que hay que parar y corregir ANTES de continuar:
 - [ ] Check 11 Workflows con `permissions:`: 0 archivos sin declarar
 - [ ] Check 12 Actions pineadas a SHA: 0 Actions con tags mutables
 
-**RESULTADO FINAL**: PASS (todos los checks superados) o FAIL con lista de archivos a corregir.
+### Contrato OpenAPI (bloqueante)
+- [ ] Check 13 Contrato OpenAPI: `OK` — sin discrepancias, o excepción documentada
+      (`KNOWN ISSUE` cruzado) referenciada explícitamente
+
+**RESULTADO FINAL**: PASS (todos los checks superados, incluido Check 13) o FAIL con lista de archivos a corregir.

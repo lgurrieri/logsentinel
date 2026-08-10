@@ -97,10 +97,21 @@ export function use{Name}() {
 ```
 
 ### `api/{name}Api.ts`
+**ANTES de nombrar los tipos de request/response**, buscar el nombre real de los
+schemas en `docs/openapi: 3.0.yml` (skill `verify-openapi-contract`). **Nunca**
+aplicar mecánicamente el sufijo `{Name}Request`/`{Name}Response` — usar los
+nombres exactos del contrato (ej. `IncidentCreate` para el request, `Incident`/
+`IncidentDetail` para el response).
+
+Contraejemplo real ya ocurrido (drift confirmado): `frontend/src/features/incidents/types/incident.types.ts`
+llegó a definir `CreateIncidentRequest`/`IncidentResponse` en vez de los nombres
+reales del contrato (`IncidentCreate`/`Incident`/`IncidentDetail`).
+
 ```typescript
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
-export async function create{Name}(request: {Name}Request): Promise<{Name}Response> {
+// {RequestSchemaName}/{ResponseSchemaName} = nombres exactos del contrato, NO sufijo mecánico
+export async function create{Name}(request: {RequestSchemaName}): Promise<{ResponseSchemaName}> {
   const response = await fetch(`${API_BASE}/api/v1/{resource}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -95,6 +95,7 @@ FILES_CHANGED:
   - path/relativo/al/repo/Dockerfile
 TESTS: N/A (infrastructure)
 ARCH_GATE: PASS | FAIL | N/A
+CONTRACT_GATE: N/A
 DEVSECOPS_GATE: PASS | FAIL | PENDING
 SUGGESTED_COMMIT: "tipo(scope): descripción del cambio"
 ESCALATION_NOTE:
