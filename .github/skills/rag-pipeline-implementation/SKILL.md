@@ -41,8 +41,8 @@ BeanOutputConverter<ParsedLog> ─→ ParsedLog{serviceName, errorCode, logLevel
      ▼ Paso 2: EmbeddingService
 EmbeddingModel.embed(text) ─→ float[N]  (N=768 Ollama/nomic-embed-text por defecto, N=1536 si perfil openai)
      │
-     ▼ Paso 3: VectorStore query
-PgVectorStore.similaritySearch() ─→ List<Document> TOP 3
+     ▼ Paso 3: Búsqueda semántica (JPA nativo) + fallback Full-Text
+Repositorio JPA con query nativa `<=>` ─→ List<RunbookChunk> Top K (config, default 3)
      │
      ▼ Paso 4: AgentOrchestrator
 ChatClient.stream() + prompt augmentation ─→ Flux<String>
@@ -139,26 +139,54 @@ Cambiar de proveedor/modelo con datos ya persistidos requiere backfill/re-embedd
 
 ---
 
-## Paso 3: VectorStore — Búsqueda semántica
+## Paso 3: Búsqueda semántica — Query nativa JPA + fallback Full-Text
+
+**NO se usa el `VectorStore`/`PgVectorStore` autoconfigurado de Spring AI.** El esquema
+(`runbook_chunks`, extensión `vector`, índice HNSW) se gestiona íntegramente con Flyway
+(`db/migration/`), y la búsqueda se implementa con una query nativa JPA usando el
+operador de distancia de coseno `<=>` de pgvector, en un único adaptador que también
+aloja el fallback Full-Text obligatorio del ticket (`LOG-US2-BE-02`).
 
 **Port out**: `VectorSearchPort.findSimilarRunbooks(float[] embedding): List<RunbookChunk>`
 
 ```java
-@Override
-public List<RunbookChunk> findSimilarRunbooks(float[] embedding) {
-    var request = SearchRequest
-        .query(/* texto del log */ "")
-        .withTopK(3)
-        .withSimilarityThreshold(0.7);   // evitar falsos positivos
+public interface RunbookChunkRepository extends JpaRepository<RunbookChunkEntity, UUID> {
 
-    return pgVectorStore.similaritySearch(request)
-        .stream()
-        .map(doc -> new RunbookChunk(
-            doc.getId(),
-            doc.getContent(),
-            (Double) doc.getMetadata().get("similarity")
-        ))
-        .toList();
+    @Query(value = """
+        SELECT * FROM runbook_chunks
+        ORDER BY embedding <=> CAST(:embedding AS vector)
+        LIMIT :topK
+        """, nativeQuery = true)
+    List<RunbookChunkEntity> findNearestByEmbedding(
+        @Param("embedding") String embedding, @Param("topK") int topK);
+}
+```
+
+```java
+@Component
+public class PgVectorRunbookSearchAdapter implements VectorSearchPort {
+
+    private final RunbookChunkRepository repository;
+    private final FullTextRunbookSearchAdapter fullTextFallback; // búsqueda tsvector
+    private final EmbeddingModel embeddingModel;
+
+    @Value("${logsentinel.rag.top-k:3}")
+    private int topK;
+
+    @Override
+    public List<RunbookChunk> findSimilarRunbooks(String rawLog) {
+        try {
+            var embedding = embeddingModel.embedForResponse(List.of(rawLog))
+                .getResults().get(0).getOutput();
+            return repository.findNearestByEmbedding(toVectorLiteral(embedding), topK)
+                .stream()
+                .map(RunbookChunkEntity::toDomain)
+                .toList();
+        } catch (Exception e) {
+            // Timeout/cuota del proveedor de embeddings → nunca retornar vacío
+            return fullTextFallback.searchByFullText(rawLog, topK);
+        }
+    }
 }
 ```
 
@@ -167,10 +195,15 @@ public List<RunbookChunk> findSimilarRunbooks(float[] embedding) {
 SELECT indexname FROM pg_indexes
 WHERE tablename = 'runbook_chunks' AND indexname LIKE '%embedding%';
 ```
-El índice se crea en `V1__init_schema.sql`. Si no existe → la búsqueda es lenta pero silenciosamente correcta.
+El índice se crea en la migración Flyway de `LOG-US2-DB-01`. Si no existe → la búsqueda
+es lenta pero silenciosamente correcta.
 
 **Anti-patrón**: Usar `findAll()` y calcular similitud coseno en Java.
 **Por qué falla**: No escala. pgvector con índice HNSW hace la búsqueda en milisegundos.
+
+**Anti-patrón**: Envolver la query nativa en el `try-catch` en vez del llamado a `EmbeddingModel`.
+**Por qué falla**: El criterio del ticket es "si la llamada remota de embeddings falla", no
+si la query SQL falla — envolver la query oculta errores reales de la base de datos.
 
 ---
 
@@ -258,7 +291,8 @@ huérfano indefinidamente. En producción esto agota el thread pool.
 | "No hace falta `BeanOutputConverter`, parseo el texto yo" | El LLM puede ser manipulado para devolver texto libre. `BeanOutputConverter` falla seguro. |
 | "El `SseEmitter` no necesita timeout, el cliente cierra la conexión" | El cliente puede desconectarse sin cerrar limpiamente. Sin timeout el hilo queda bloqueado. |
 | "El índice HNSW lo agrego después, primero que funcione" | Sin índice HNSW, cada búsqueda es O(n) full scan. Con 10K runbook chunks es perceptiblemente lento. |
-| "Hardcodeo `topK=3` en el adapter, no en config" | El número de chunks afecta calidad y costo. Debe ser configurable via `application.yml`. |
+| "Hardcodeo `topK=3` en el adapter, no en config" | El número de chunks afecta calidad y costo. Debe ser configurable via `application.yml` (`logsentinel.rag.top-k`). |
+| "Envuelvo la query SQL en el `try-catch`, no solo la llamada a embeddings" | El fallback Full-Text debe activarse por falla del *proveedor de embeddings* (timeout/cuota), no por errores reales de la query nativa — eso oculta bugs de SQL. |
 
 ## Red Flags
 
@@ -268,13 +302,17 @@ huérfano indefinidamente. En producción esto agota el thread pool.
 - `emitter.complete()` fuera de un bloque `finally`
 - Cálculo de distancia coseno en Java en vez de en PostgreSQL con `<=>`
 - `EmbeddingModel` inyectado en `application/usecases` — viola Clean Architecture
+- Uso de `VectorStore`/`PgVectorStore` autoconfigurado de Spring AI — este proyecto usa Flyway + JPA nativo
+- Búsqueda semántica que puede retornar lista vacía sin haber intentado el fallback Full-Text
 
 ## Verificación (checklist de salida)
 
 - [ ] `ParsedLog` es un `record` (no clase con @Data)
 - [ ] `BeanOutputConverter.getFormat()` está en el system prompt
 - [ ] Dimensión del embedding verificada contra la esperada del perfil activo (768 Ollama / 1536 OpenAI)
-- [ ] Índice HNSW existe en `runbook_chunks.embedding`
+- [ ] Índice HNSW existe en `runbook_chunks.embedding` (creado por migración Flyway, no a mano)
+- [ ] Top K leído de `logsentinel.rag.top-k` (default 3), nunca hardcodeado en el adapter
+- [ ] Fallback Full-Text (`tsvector`) se activa cuando falla la llamada a `EmbeddingModel` — la búsqueda nunca retorna vacío por esa causa
 - [ ] `SseEmitter` construido con timeout `new SseEmitter(30_000L)`
 - [ ] `emitter.complete()` está en bloque `finally`
 - [ ] Test de integración del pipeline con `@MockBean ChatClient` y `@MockBean EmbeddingModel`

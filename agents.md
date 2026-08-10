@@ -95,8 +95,7 @@ com.logsentinel
     ├── adapters/
     │   ├── in/web/          # @RestController, DTOs, SSE mappers
     │   └── out/
-    │       ├── persistence/ # JPA/Hibernate (PostgreSQL relacional)
-    │       ├── vectorstore/ # pgvector via Spring AI PgVectorStore
+    │       ├── persistence/ # JPA/Hibernate + queries nativas pgvector (relacional y búsqueda semántica)
     │       └── ai/          # ChatClient, EmbeddingClient (Ollama por defecto / OpenAI opcional)
     └── config/
 ```
@@ -182,7 +181,7 @@ public class Incident {
 ```
 Log crudo → LogParserService (BeanOutputConverter → ParsedLog tipado)
          → EmbeddingService (EmbeddingModel de Spring AI → float[N]; N=768 con Ollama/nomic-embed-text por defecto, N=1536 si el perfil openai está activo)
-         → VectorStore query (pgvector distancia coseno sobre runbook_chunks, TOP 3 chunks)
+         → Búsqueda semántica (repositorio JPA con query nativa `<=>` sobre runbook_chunks, Top K configurable — default 3; fallback Full-Text tsvector si falla el embedding)
          → AgentOrchestrator (prompt augmentation: system prompt SRE + runbooks)
          → ChatClient stream (Ollama/llama3.1 por defecto, OpenAI/gpt-4o si el perfil openai está activo; stream=true)
          → SseEmitter → Frontend EventSource (token a token)
@@ -215,4 +214,4 @@ Las versiones están gestionadas por el BOM de Spring Boot 4 — **no añadir `<
 - Formato de título: `[backend|frontend|iac|docs] descripción breve`
 - Checks requeridos: `mvn test` (todos en verde, Docker disponible)
 - No exponer credenciales; respetar la regla de dependencias de Clean Architecture
-- Branch actual de trabajo: `feature/project-bootstrap`
+- Branch actual de trabajo: `feature/us2-rag-semantic-search`

@@ -24,10 +24,5 @@ spring:
       embedding:
         options:
           model: nomic-embed-text
-    vectorstore:
-      pgvector:
-        table-name: runbook_chunks
-        index-type: HNSW
-        distance-type: COSINE_DISTANCE
-        dimensions: 768
-        initialize-schema: false
+# Nota: la búsqueda vectorial NO usa el VectorStore autoconfigurado de Spring AI —
+# se implementa con Flyway (schema) + query nativa JPA (operador `<=>` de pgvector).
