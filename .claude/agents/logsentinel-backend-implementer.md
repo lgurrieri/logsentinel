@@ -21,8 +21,10 @@ Entregar código compilable con tests pasando y sin violaciones arquitectónicas
 1. `agents.md` — convenciones generales del proyecto
 2. `.github/copilot-instructions.md` — reglas no negociables del backend
 3. `.github/copilot-instructions-commits.md` — formato de commit sugerido
-4. La sección del ticket en `docs/tickets/tickets.md`
-5. La user story correspondiente en `docs/user-stories/` — implementar ÚNICAMENTE los criterios de la sección "Backend"; ignorar la sección "Frontend (React)"
+4. `docs/openapi: 3.0.yml` — contrato de API, fuente de verdad de paths/schemas/enums
+5. La sección del ticket en `docs/tickets/tickets.md`
+6. La user story correspondiente en `docs/user-stories/` — implementar ÚNICAMENTE los criterios de la sección "Backend"; ignorar la sección "Frontend (React)"
+7. `.github/skills/verify-openapi-contract/SKILL.md` — gate de reconciliación de contrato, obligatorio antes de escribir código
 
 Bajo demanda (según el ticket):
 - `.github/skills/tdd-logsentinel/SKILL.md` + `references/advanced-test-patterns.md`
@@ -33,11 +35,26 @@ Bajo demanda (según el ticket):
 
 ## Proceso
 
-Ejecutar el proceso de 11 pasos definido en `.github/logsentinel-backend-implementer.agent.md` § "Proceso de ejecución", traduciendo herramientas Copilot → Claude Code:
+Ejecutar el proceso de 12 pasos definido en `.github/logsentinel-backend-implementer.agent.md` § "Proceso de ejecución", traduciendo herramientas Copilot → Claude Code:
 
 - Creación/edición de archivos → Write / Edit
 - Comandos de terminal (`mvn`, `git status`) → Bash
-- Búsquedas de patrones (para verify-clean-arch) → Grep / Glob
+- Búsquedas de patrones (para verify-clean-arch / verify-openapi-contract) → Grep / Glob
+
+## Gate de contrato OpenAPI (Paso 2 del proceso original) — escalamiento en dos modos
+
+El Paso 2 ("Reconciliar contrato OpenAPI") es obligatorio antes de cualquier test o
+código. Si `verify-openapi-contract` detecta una discrepancia NO documentada como
+excepción cruzada (`KNOWN ISSUE`):
+
+- **Si este agente corre como subagente dispatchado** (invocado vía Task/Agent, ej.
+  desde `orchestrate-user-story`): NUNCA llamar `AskUserQuestion`. Detenerse, emitir
+  `STATUS: BLOCKED`, `CONTRACT_GATE: DRIFT_DETECTED` y el relevamiento completo (tabla)
+  en `ESCALATION_NOTE` del bloque `---OUTPUT---`, para que el orquestador escale al humano.
+- **Si este agente corre como agente principal interactivo** (invocado directamente por
+  el desarrollador): usar `AskUserQuestion` directamente con las opciones "Alinear el
+  ticket al contrato" / "Alinear el contrato al ticket (ticket aparte)" / "Aprobar
+  excepción documentada" / "Pausar sin decidir".
 
 ## Override para tickets de solo esquema (DB-only)
 
@@ -82,6 +99,7 @@ FILES_CHANGED:
   - path/relativo/al/repo/Archivo2.java
 TESTS: N passed, M failed
 ARCH_GATE: PASS | FAIL
+CONTRACT_GATE: OK | DRIFT_DETECTED | N/A
 DEVSECOPS_GATE: PASS | FAIL | PENDING
 SUGGESTED_COMMIT: "tipo(scope): descripción del cambio"
 ESCALATION_NOTE:
@@ -90,5 +108,6 @@ ESCALATION_NOTE:
 
 - `STATUS: GREEN` — ticket completado sin problemas
 - `STATUS: PARTIAL` — ticket funcional pero con warnings no bloqueantes (ej. DEVSECOPS_GATE PENDING)
-- `STATUS: BLOCKED` — no se puede completar el ticket por un motivo fuera de scope
-- `ESCALATION_NOTE` — solo si BLOCKED: describir exactamente qué se necesita fuera de `backend/`
+- `STATUS: BLOCKED` — no se puede completar el ticket por un motivo fuera de scope, o por `CONTRACT_GATE: DRIFT_DETECTED` sin resolver
+- `CONTRACT_GATE: DRIFT_DETECTED` — discrepancia ticket-vs-contrato no documentada como excepción; el relevamiento completo va en `ESCALATION_NOTE`
+- `ESCALATION_NOTE` — solo si BLOCKED: describir exactamente qué se necesita fuera de `backend/`, o el relevamiento tabla si es `CONTRACT_GATE: DRIFT_DETECTED`

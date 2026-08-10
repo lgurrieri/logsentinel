@@ -65,19 +65,35 @@ public class {Name}UseCaseImpl implements {Name}UseCase {
 }
 ```
 
-### 4. DTO de entrada — `infrastructure/adapters/in/web/dto/{Name}Request.java`
+### 4. DTO de entrada — `infrastructure/adapters/in/web/dto/{SchemaName}.java`
+**ANTES de nombrar el archivo o la clase**, buscar el nombre real del schema en
+`docs/openapi: 3.0.yml` (skill `verify-openapi-contract`). **Nunca** aplicar
+mecánicamente el sufijo `{Name}Request` — el contrato define su propio nombre y
+puede no seguir ese patrón.
+
+Contraejemplo real ya ocurrido (drift confirmado): el ticket `LOG-US1-BE-02B`
+generó `CreateIncidentRequest` aplicando el sufijo mecánico, cuando el contrato
+define el schema `IncidentCreate`. Usar siempre el nombre exacto del contrato.
+
 ```java
 // SIEMPRE record — NUNCA clase con Lombok
-public record {Name}Request(
+// Nombre de la clase = nombre exacto del schema en el contrato (ej. IncidentCreate, NO CreateIncidentRequest)
+public record {SchemaName}(
     @NotBlank String systemName,
     @NotNull Urgency urgency,
     @NotBlank @Size(min = 10) String rawLogSnapshot
 ) {}
 ```
 
-### 5. DTO de salida — `infrastructure/adapters/in/web/dto/{Name}Response.java`
+### 5. DTO de salida — `infrastructure/adapters/in/web/dto/{SchemaName}.java`
+Mismo criterio que el punto 4: usar el nombre exacto del schema de respuesta del
+contrato (ej. `Incident`, `IncidentDetail`), **nunca** el sufijo mecánico `{Name}Response`.
+
+Contraejemplo real ya ocurrido: el mismo ticket generó `IncidentResponse` en vez
+de `Incident`/`IncidentDetail`, los nombres reales del contrato.
+
 ```java
-public record {Name}Response(UUID id, String status, OffsetDateTime createdAt) {}
+public record {SchemaName}(UUID id, String status, OffsetDateTime createdAt) {}
 ```
 
 ### 6. Controlador — `infrastructure/adapters/in/web/{Name}Controller.java`
@@ -94,9 +110,10 @@ public class {Name}Controller {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public {Name}Response create(@Valid @RequestBody {Name}Request request) {
+    public {ResponseSchemaName} create(@Valid @RequestBody {RequestSchemaName} request) {
         // mapear request → dominio → useCase.execute() → mapear → response
         // NUNCA retornar la entidad @Entity directamente
+        // {RequestSchemaName}/{ResponseSchemaName} = nombres exactos del contrato (ver puntos 4-5)
     }
 }
 ```

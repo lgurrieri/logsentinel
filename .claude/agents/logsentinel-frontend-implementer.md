@@ -22,8 +22,10 @@ definida en las instrucciones del proyecto.
 1. `agents.md` — convenciones generales del proyecto
 2. `.github/copilot-instructions-frontend.md` — reglas no negociables del frontend
 3. `.github/copilot-instructions-commits.md` — formato de commit sugerido
-4. La sección del ticket en `docs/tickets/tickets.md`
-5. La user story en `docs/user-stories/` — criterios de aceptación Gherkin, sección "Frontend"/"Especificaciones de UI"
+4. `docs/openapi: 3.0.yml` — contrato de API, fuente de verdad de paths/schemas/enums
+5. La sección del ticket en `docs/tickets/tickets.md`
+6. La user story en `docs/user-stories/` — criterios de aceptación Gherkin, sección "Frontend"/"Especificaciones de UI"
+7. `.github/skills/verify-openapi-contract/SKILL.md` — gate de reconciliación de contrato, obligatorio antes de escribir código
 
 Bajo demanda (según el ticket):
 - `.github/skills/tdd-react-logsentinel/SKILL.md`
@@ -33,12 +35,27 @@ Bajo demanda (según el ticket):
 
 ## Proceso
 
-Ejecutar el proceso de 9 pasos definido en `.github/logsentinel-frontend-implementer.agent.md`
+Ejecutar el proceso de 10 pasos definido en `.github/logsentinel-frontend-implementer.agent.md`
 § "Proceso de ejecución", traduciendo herramientas Copilot → Claude Code:
 
 - Creación/edición de archivos → Write / Edit
 - Comandos de terminal (`npm test`, `npm run build`) → Bash
 - Búsquedas de patrones → Grep / Glob
+
+## Gate de contrato OpenAPI (Paso 2 del proceso original) — escalamiento en dos modos
+
+El Paso 2 ("Reconciliar contrato OpenAPI") es obligatorio antes de crear cualquier
+componente, hook o función. Si `verify-openapi-contract` detecta una discrepancia NO
+documentada como excepción cruzada (`KNOWN ISSUE`):
+
+- **Si este agente corre como subagente dispatchado** (invocado vía Task/Agent, ej.
+  desde `orchestrate-user-story`): NUNCA llamar `AskUserQuestion`. Detenerse, emitir
+  `STATUS: BLOCKED`, `CONTRACT_GATE: DRIFT_DETECTED` y el relevamiento completo (tabla)
+  en `ESCALATION_NOTE` del bloque `---OUTPUT---`, para que el orquestador escale al humano.
+- **Si este agente corre como agente principal interactivo** (invocado directamente por
+  el desarrollador): usar `AskUserQuestion` directamente con las opciones "Alinear el
+  ticket al contrato" / "Alinear el contrato al ticket (ticket aparte)" / "Aprobar
+  excepción documentada" / "Pausar sin decidir".
 
 ## Caso especial: ticket cross-cutting E2E (ej. LOG-US4-E2E-04)
 
@@ -83,6 +100,7 @@ FILES_CHANGED:
   - path/relativo/al/repo/Archivo2.ts
 TESTS: N passed, M failed
 ARCH_GATE: PASS | FAIL
+CONTRACT_GATE: OK | DRIFT_DETECTED | N/A
 DEVSECOPS_GATE: PASS | FAIL | PENDING
 SUGGESTED_COMMIT: "tipo(scope): descripción del cambio"
 ESCALATION_NOTE:
@@ -91,5 +109,6 @@ ESCALATION_NOTE:
 
 - `STATUS: GREEN` — ticket completado sin problemas
 - `STATUS: PARTIAL` — ticket funcional pero con warnings no bloqueantes
-- `STATUS: BLOCKED` — no se puede completar; requiere intervención fuera de `frontend/`
-- `ESCALATION_NOTE` — solo si BLOCKED: describir exactamente qué se necesita fuera de scope
+- `STATUS: BLOCKED` — no se puede completar; requiere intervención fuera de `frontend/`, o `CONTRACT_GATE: DRIFT_DETECTED` sin resolver
+- `CONTRACT_GATE: DRIFT_DETECTED` — discrepancia ticket-vs-contrato no documentada como excepción; el relevamiento completo va en `ESCALATION_NOTE`
+- `ESCALATION_NOTE` — solo si BLOCKED: describir exactamente qué se necesita fuera de scope, o el relevamiento tabla si es `CONTRACT_GATE: DRIFT_DETECTED`
