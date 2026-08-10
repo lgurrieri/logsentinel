@@ -44,6 +44,6 @@ Plan aprobado por el humano: 2026-08-10.
 
 | Ticket | Agente | Estado | Ronda | SHA commit | Aprobado por | Timestamp |
 |---|---|---|---|---|---|---|
-| LOG-US2-DB-01 | logsentinel-backend-implementer | in_progress | 1 | — | — | — |
-| LOG-US2-BE-02 | logsentinel-backend-implementer | pending | 0 | — | — | — |
-| LOG-US2-TEST-03 | logsentinel-backend-implementer | pending | 0 | — | — | — |
+| LOG-US2-DB-01 | logsentinel-backend-implementer | completed | 1 | 23b605b | humano | 2026-08-10 |
+| LOG-US2-BE-02 | logsentinel-backend-implementer | completed | 1 | ee9320a | humano | 2026-08-10 |
+| LOG-US2-TEST-03 | logsentinel-backend-implementer | completed | 1 | 57e0ca4 | humano | 2026-08-10 |
