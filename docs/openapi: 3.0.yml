@@ -20,13 +20,13 @@ paths:
           required: false
           schema:
             type: string
-            enum: [OPEN, ANALYZING, RESOLVED]
-        - name: priority
+            enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
+        - name: urgency
           in: query
           required: false
           schema:
             type: string
-            enum: [P1, P2, P3]
+            enum: [LOW, MEDIUM, HIGH, CRITICAL]
       responses:
         '200':
           description: Listado de incidentes recuperado con éxito.
@@ -74,7 +74,7 @@ paths:
         '404':
           description: El incidente especificado no existe.
 
-  /incidents/{id}/stream:
+  /incidents/{id}/diagnostic/stream:
     get:
       summary: Streaming SSE del diagnóstico generado por IA (RAG)
       description: Abre un canal interactivo Server-Sent Events (SSE). El backend ejecuta la búsqueda vectorial en `pgvector`, monta el prompt contextualizado y envía la respuesta del LLM en fragmentos (chunks) en tiempo real.
@@ -94,12 +94,12 @@ paths:
                 type: string
                 example: "data: {\"chunk\": \"Error detectado de conexión a la base de datos...\"}"
 
-  /incident-analyses/{analysisId}/remediations:
+  /incidents/{id}/remediations:
     post:
       summary: Ejecutar script de remediación sugerido
       description: Dispara la ejecución del script Bash o SQL generado por la IA en la infraestructura simulada y registra el log final del resultado.
       parameters:
-        - name: analysisId
+        - name: id
           in: path
           required: true
           schema:
@@ -126,12 +126,12 @@ components:
           example: "auth-service"
         status:
           type: string
-          enum: [OPEN, ANALYZING, RESOLVED]
+          enum: [OPEN, IN_PROGRESS, RESOLVED, CLOSED]
           example: "OPEN"
-        priority:
+        urgency:
           type: string
-          enum: [P1, P2, P3]
-          example: "P1"
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+          example: "CRITICAL"
         createdAt:
           type: string
           format: date-time
@@ -143,16 +143,16 @@ components:
       type: object
       required:
         - systemName
-        - priority
+        - urgency
         - rawLogSnapshot
       properties:
         systemName:
           type: string
           example: "auth-service"
-        priority:
+        urgency:
           type: string
-          enum: [P1, P2, P3]
-          example: "P1"
+          enum: [LOW, MEDIUM, HIGH, CRITICAL]
+          example: "CRITICAL"
         rawLogSnapshot:
           type: string
           example: "2026-06-11 20:15:03 ERROR org.postgresql.Driver - Connection refused. Total connections exceeded max_connections limit."
@@ -184,6 +184,11 @@ components:
         generatedScript:
           type: string
           example: "#!/bin/bash\nansible-playbook -i production kill-idle-conns.yml"
+        # KNOWN ISSUE (documental, sin resolver): falta el estado intermedio `EXECUTING`
+        # que LOG-US4-BE-02 commitea de inmediato (Propagation.REQUIRES_NEW) antes del
+        # cierre transaccional, y no existe todavía un endpoint de consulta/streaming del
+        # estado de auditoría en progreso que LOG-US4-FE-03 requiere (polling/SSE).
+        # Resolver al implementar LOG-US4-BE-02 / LOG-US4-FE-03.
         executionStatus:
           type: string
           enum: [SUCCESS, FAILED, DRY_RUN]

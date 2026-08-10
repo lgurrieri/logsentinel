@@ -191,7 +191,7 @@ describe('createIncident', () => {
   it('retorna incidente con id y status OPEN en respuesta 201', async () => {
     const result = await createIncident({
       systemName: 'payment-gateway',
-      priority: 'P1',
+      urgency: 'CRITICAL',
       rawLogSnapshot: 'Connection timeout after 30000ms',
     });
     expect(result.id).toBe('abc-123');
@@ -205,7 +205,7 @@ describe('createIncident', () => {
       ),
     );
     await expect(
-      createIncident({ systemName: '', priority: 'P1', rawLogSnapshot: '' }),
+      createIncident({ systemName: '', urgency: 'CRITICAL', rawLogSnapshot: '' }),
     ).rejects.toThrow('HTTP 400');
   });
 });

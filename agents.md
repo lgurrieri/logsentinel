@@ -128,16 +128,16 @@ El proyecto **no usa Lombok**. Java 25 provee alternativas nativas superiores pa
 
 | Caso de uso | Patrón obligatorio |
 |-------------|-------------------|
-| DTOs de API (`IncidentRequest`, `IncidentResponse`) | `record` nativo |
+| DTOs de API (`CreateIncidentRequest`, `IncidentResponse`) | `record` nativo |
 | POJOs para `BeanOutputConverter` de Spring AI (`ParsedLog`, `Diagnostic`) | `record` nativo |
 | Objetos de valor del dominio | `record` inmutable |
 | Entidades JPA `@Entity` | Clase estándar con getters explícitos; `equals()`/`hashCode()` basados **solo en `id`** para compatibilidad con proxies Hibernate |
 
 ```java
 // ✅ Correcto — DTO como record
-public record IncidentRequest(
+public record CreateIncidentRequest(
     @NotBlank String systemName,
-    @NotNull Priority priority,
+    @NotNull Urgency urgency,
     @NotBlank @Size(min = 10) String rawLogSnapshot
 ) {}
 

@@ -67,7 +67,7 @@
 
 * **Descripción:** Introducir una arquitectura limpia desacoplando por completo el frontend y el transporte de datos de las entidades de persistencia de la base de datos.
 * **Criterios de Aceptación Técnicos:**
-* Crear clases de transferencia de datos de entrada (`IncidentRequest`) y salida (`IncidentResponse`) inmutables.
+* Crear clases de transferencia de datos de entrada (`CreateIncidentRequest`) y salida (`IncidentResponse`) inmutables.
 * Garantizar mediante pruebas unitarias que el controlador web nunca interactúe o exponga la entidad JPA pura de base de datos.
 
 
@@ -225,6 +225,7 @@
 * Crear la tabla `remediation_audits` para capturar metadatos, comandos y respuestas.
 * Diseñar la máquina de estados operando con transacciones independientes secuenciales configuradas mediante **`Propagation.REQUIRES_NEW`**.
 * **Flujo Transaccional:** 1. Transacción A (Commit Inmediato de estado `EXECUTING`) $\rightarrow$ 2. Fase de ejecución aislada libre en Sandbox $\rightarrow$ 3. Transacción B (Commit de Cierre con buffers finales de `stdout`/`stderr` en estado `SUCCESS` o `FAILED`).
+* **Nota (issue documental abierto):** el contrato OpenAPI (`RemediationAction.executionStatus`) todavía no incluye el estado intermedio `EXECUTING` ni un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE). Resolver al implementar este ticket.
 
 
 

@@ -72,7 +72,7 @@ class CreateIncidentUseCaseTest {
     @Test
     void should_create_incident_with_open_status_when_valid_request() {
         // Arrange
-        var request = new CreateIncidentCommand("payment-gw", Priority.P1, "ERROR pool exhausted");
+        var request = new CreateIncidentCommand("payment-gw", Urgency.CRITICAL, "ERROR pool exhausted");
         given(repositoryPort.save(any())).willReturn(new IncidentId(UUID.randomUUID()));
 
         // Act

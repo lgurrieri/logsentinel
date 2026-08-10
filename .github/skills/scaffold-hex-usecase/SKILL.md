@@ -70,7 +70,7 @@ public class {Name}UseCaseImpl implements {Name}UseCase {
 // SIEMPRE record — NUNCA clase con Lombok
 public record {Name}Request(
     @NotBlank String systemName,
-    @NotNull Priority priority,
+    @NotNull Urgency urgency,
     @NotBlank @Size(min = 10) String rawLogSnapshot
 ) {}
 ```

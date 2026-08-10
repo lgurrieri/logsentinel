@@ -83,7 +83,7 @@ LogSentinel es una herramienta SRE. Sus propios logs deben ser de calidad SRE.
 log.info("Incident created", Map.of(
     "incidentId", id.toString(),
     "systemName", systemName,
-    "priority", priority.name()
+    "urgency", urgency.name()
 ));
 
 log.error("RAG pipeline failed", Map.of(

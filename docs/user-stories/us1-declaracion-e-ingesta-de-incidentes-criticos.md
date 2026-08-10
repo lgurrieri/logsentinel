@@ -23,7 +23,7 @@
 Escenario: Creación exitosa de un incidente crítico
 
   Dado que el endpoint "/api/v1/incidents" recibe una petición POST válida
-  Y el payload contiene systemName="payment-gateway", priority="P1" y un rawLogSnapshot con errores de timeout
+  Y el payload contiene systemName="payment-gateway", urgency="CRITICAL" y un rawLogSnapshot con errores de timeout
 
   Cuando el backend procesa la solicitud con éxito
 
@@ -46,4 +46,4 @@ Escenario: Rechazo de ingesta por datos incompletos
 
 * **Capa Web (Java):** Controlador REST que valida el DTO de entrada mediante anotaciones `@Valid`, `@NotNull` y `@Size(min=10)`.
 * **Capa de Persistencia:** Mapeo directo a la entidad `@Entity` de JPA correspondiente a la tabla `incidents`. Generación automática de UUID v4 del lado de la base de datos a través de Hibernate (`@GeneratedValue`).
-* **Respuesta:** Retorno de un objeto `IncidentResponseDTO` aislando la entidad física de la API externa.
+* **Respuesta:** Retorno de un objeto `IncidentResponse` aislando la entidad física de la API externa.
