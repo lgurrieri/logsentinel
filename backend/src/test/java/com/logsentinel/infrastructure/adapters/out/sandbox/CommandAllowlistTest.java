@@ -3,8 +3,6 @@ package com.logsentinel.infrastructure.adapters.out.sandbox;
 import com.logsentinel.domain.exception.InvalidRemediationScriptException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
 
 import java.util.Set;
 
@@ -13,11 +11,12 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 
 /**
  * Unit tests for {@link CommandAllowlist} (LOG-US4-BE-01). Pure Java — no Spring
- * context. Proves the sanitization component rejects both non-approved base
- * commands and the classic Bash injection metacharacters, which is the "solid
- * foundation" the dedicated 5-vector matrix suite of LOG-US4-TEST-03 exercises
- * exhaustively — this class only covers the base cases required to prove the
- * policy actually works, not the full matrix.
+ * context. Proves the "does the policy engage at all" base cases: an
+ * allowlisted base command is accepted (shebang line ignored when extracting
+ * it), a non-allowlisted base command is rejected, and blank/null scripts are
+ * rejected. The dedicated 5-vector Bash injection matrix required by
+ * LOG-US4-TEST-03 lives in {@link BashInjectionMatrixTest}, not here, to avoid
+ * duplicating the same parameterized cases in two classes.
  */
 class CommandAllowlistTest {
 
@@ -54,16 +53,6 @@ class CommandAllowlistTest {
     @DisplayName("should reject a null script")
     void should_reject_null_script() {
         assertThatThrownBy(() -> allowlist.validate(null))
-                .isInstanceOf(InvalidRemediationScriptException.class);
-    }
-
-    @ParameterizedTest(name = "should reject script containing forbidden metacharacter [{0}]")
-    @ValueSource(strings = { "|", "&&", "$(", "`", ">" })
-    @DisplayName("should reject a script containing any of the 5 classic Bash injection metacharacters")
-    void should_reject_script_containing_forbidden_metacharacter(String forbiddenMetacharacter) {
-        String maliciousScript = "echo safe " + forbiddenMetacharacter + " cat /etc/passwd";
-
-        assertThatThrownBy(() -> allowlist.validate(maliciousScript))
                 .isInstanceOf(InvalidRemediationScriptException.class);
     }
 }
