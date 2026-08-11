@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import reactor.core.publisher.Flux;
@@ -47,6 +48,9 @@ class DiagnosticStreamIntegrationTest {
 
     @Autowired
     private IncidentPersistenceAdapter incidentPersistenceAdapter;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     private ChatClient chatClient;
@@ -99,5 +103,23 @@ class DiagnosticStreamIntegrationTest {
                 "/api/v1/incidents/{id}/diagnostic/stream", String.class, unknownId);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("should persist the full consolidated diagnostic text in incident_diagnostics "
+            + "once the SSE channel closes successfully (LOG-US3-DB-02)")
+    void should_persist_consolidated_diagnostic_after_stream_completes() {
+        given(streamResponseSpec.content()).willReturn(
+                Flux.just("Root cause: ", "connection pool exhaustion detected."));
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("payment-gw-persist", Urgency.CRITICAL, "ERROR: connection pool exhausted"));
+
+        restTemplate.getForEntity(
+                "/api/v1/incidents/{id}/diagnostic/stream", String.class, incident.getId());
+
+        String persistedText = jdbcTemplate.queryForObject(
+                "SELECT diagnostic_text FROM incident_diagnostics WHERE incident_id = ?",
+                String.class, incident.getId());
+        assertThat(persistedText).isEqualTo("Root cause: connection pool exhaustion detected.");
     }
 }

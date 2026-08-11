@@ -3,10 +3,12 @@ package com.logsentinel.application.service;
 import com.logsentinel.application.ports.in.StreamDiagnosticUseCase;
 import com.logsentinel.application.ports.out.DiagnosticChatPort;
 import com.logsentinel.application.ports.out.DiagnosticStreamListener;
+import com.logsentinel.application.ports.out.IncidentDiagnosticRepository;
 import com.logsentinel.application.ports.out.IncidentRepository;
 import com.logsentinel.application.ports.out.RunbookSearchPort;
 import com.logsentinel.domain.exception.IncidentNotFoundException;
 import com.logsentinel.domain.model.Incident;
+import com.logsentinel.domain.model.IncidentDiagnostic;
 import com.logsentinel.domain.model.RunbookChunk;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,6 +36,12 @@ import java.util.stream.Collectors;
  * Every code path — success, incident not found, or chat provider failure — notifies
  * {@code listener.onComplete(...)} exactly once via a {@code finally} block, so the
  * infrastructure SSE adapter can reliably close the emitter (verify-clean-arch Check 7).
+ * <p>
+ * When the stream completes successfully, the full concatenated diagnostic text is
+ * frozen and persisted via {@link IncidentDiagnosticRepository} (LOG-US3-DB-02) before
+ * {@code onComplete} is notified. A persistence failure is logged but never surfaces to
+ * the listener — by that point the diagnostic has already been fully streamed to the
+ * client, so failing the SSE channel after the fact would not undo already-sent bytes.
  */
 @Service
 public class StreamDiagnosticService implements StreamDiagnosticUseCase {
@@ -43,19 +51,23 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
     private final IncidentRepository incidentRepository;
     private final RunbookSearchPort runbookSearchPort;
     private final DiagnosticChatPort diagnosticChatPort;
+    private final IncidentDiagnosticRepository incidentDiagnosticRepository;
 
     public StreamDiagnosticService(IncidentRepository incidentRepository,
                                     RunbookSearchPort runbookSearchPort,
-                                    DiagnosticChatPort diagnosticChatPort) {
+                                    DiagnosticChatPort diagnosticChatPort,
+                                    IncidentDiagnosticRepository incidentDiagnosticRepository) {
         this.incidentRepository = incidentRepository;
         this.runbookSearchPort = runbookSearchPort;
         this.diagnosticChatPort = diagnosticChatPort;
+        this.incidentDiagnosticRepository = incidentDiagnosticRepository;
     }
 
     @Async
     @Override
     public void execute(UUID incidentId, DiagnosticStreamListener listener) {
         Throwable error = null;
+        StringBuilder diagnosticText = new StringBuilder();
         try {
             Incident incident = incidentRepository.findById(incidentId)
                     .orElseThrow(() -> new IncidentNotFoundException(incidentId));
@@ -64,7 +76,10 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
             diagnosticChatPort.streamDiagnosis(
                     buildSystemPrompt(runbooks),
                     buildUserPrompt(incident),
-                    listener::onChunk);
+                    fragment -> {
+                        diagnosticText.append(fragment);
+                        listener.onChunk(fragment);
+                    });
         } catch (Exception e) {
             log.error("Diagnostic stream failed", Map.of(
                     "incidentId", String.valueOf(incidentId),
@@ -72,7 +87,21 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
             ));
             error = e;
         } finally {
+            if (error == null) {
+                persistDiagnostic(incidentId, diagnosticText.toString());
+            }
             listener.onComplete(error);
+        }
+    }
+
+    private void persistDiagnostic(UUID incidentId, String diagnosticText) {
+        try {
+            incidentDiagnosticRepository.save(IncidentDiagnostic.createNew(incidentId, diagnosticText));
+        } catch (Exception e) {
+            log.error("Failed to persist consolidated incident diagnostic", Map.of(
+                    "incidentId", String.valueOf(incidentId),
+                    "cause", String.valueOf(e.getMessage())
+            ));
         }
     }
 

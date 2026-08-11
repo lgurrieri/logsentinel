@@ -2,10 +2,12 @@ package com.logsentinel.application.service;
 
 import com.logsentinel.application.ports.out.DiagnosticChatPort;
 import com.logsentinel.application.ports.out.DiagnosticStreamListener;
+import com.logsentinel.application.ports.out.IncidentDiagnosticRepository;
 import com.logsentinel.application.ports.out.IncidentRepository;
 import com.logsentinel.application.ports.out.RunbookSearchPort;
 import com.logsentinel.domain.exception.IncidentNotFoundException;
 import com.logsentinel.domain.model.Incident;
+import com.logsentinel.domain.model.IncidentDiagnostic;
 import com.logsentinel.domain.model.IncidentStatus;
 import com.logsentinel.domain.model.RunbookChunk;
 import com.logsentinel.domain.model.Urgency;
@@ -50,6 +52,9 @@ class StreamDiagnosticServiceTest {
 
     @Mock
     private DiagnosticChatPort diagnosticChatPort;
+
+    @Mock
+    private IncidentDiagnosticRepository incidentDiagnosticRepository;
 
     @Mock
     private DiagnosticStreamListener listener;
@@ -128,5 +133,73 @@ class StreamDiagnosticServiceTest {
         streamDiagnosticService.execute(incidentId, listener);
 
         verify(listener).onComplete(eq(chatFailure));
+    }
+
+    @Test
+    @DisplayName("should persist the full consolidated diagnostic text once the stream completes successfully (LOG-US3-DB-02)")
+    void should_persist_consolidated_diagnostic_when_stream_completes_successfully() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: connection pool exhausted", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs()))
+                .willReturn(List.of(new RunbookChunk(UUID.randomUUID(), "restart the pool on exhaustion")));
+        willAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(2);
+            onChunk.accept("Root cause: ");
+            onChunk.accept("pool exhaustion.");
+            return null;
+        }).given(diagnosticChatPort).streamDiagnosis(anyString(), anyString(), any());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        ArgumentCaptor<IncidentDiagnostic> diagnosticCaptor = ArgumentCaptor.forClass(IncidentDiagnostic.class);
+        verify(incidentDiagnosticRepository).save(diagnosticCaptor.capture());
+        assertThat(diagnosticCaptor.getValue().getIncidentId()).isEqualTo(incidentId);
+        assertThat(diagnosticCaptor.getValue().getDiagnosticText()).isEqualTo("Root cause: pool exhaustion.");
+        verify(listener).onComplete(null);
+    }
+
+    @Test
+    @DisplayName("should not persist any diagnostic when the incident does not exist")
+    void should_not_persist_diagnostic_when_incident_not_found() {
+        UUID incidentId = UUID.randomUUID();
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.empty());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        verify(incidentDiagnosticRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("should not persist any diagnostic when the chat port fails")
+    void should_not_persist_diagnostic_when_chat_port_fails() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "billing-svc", Urgency.MEDIUM,
+                "WARN: retry storm detected", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(anyString())).willReturn(List.of());
+        willThrow(new RuntimeException("LLM provider unavailable"))
+                .given(diagnosticChatPort).streamDiagnosis(anyString(), anyString(), any());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        verify(incidentDiagnosticRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("should still notify the listener successfully when persisting the diagnostic fails "
+            + "(a persistence failure must not corrupt the already-streamed SSE response)")
+    void should_still_complete_successfully_when_persisting_diagnostic_fails() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: connection pool exhausted", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs())).willReturn(List.of());
+        willThrow(new RuntimeException("DB unavailable")).given(incidentDiagnosticRepository).save(any());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        verify(listener).onComplete(null);
     }
 }
