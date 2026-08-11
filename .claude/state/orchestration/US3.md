@@ -31,21 +31,23 @@ Rama: `feature/us3-streaming-diagnostico-sse`
 | LOG-US3-BE-01 | logsentinel-backend-implementer | completed | 1 | c34a432 | humano | 2026-08-11 |
 | LOG-US3-DB-02 | logsentinel-backend-implementer | completed | 1 | e771e28 | humano | 2026-08-11 |
 | LOG-US3-FE-03 | logsentinel-frontend-implementer | completed | 1 | 5bbd6f3 | humano | 2026-08-11 |
+| LOG-US3-DB-02B | logsentinel-backend-implementer | completed | 1 | 7fcc296 | humano | 2026-08-11 |
 
 ## Nota de pausa (2026-08-11, resuelta)
 
 `LOG-US3-DB-02` quedó GREEN y sin commitear tras una pausa; el humano pidió commitearlo
 en un turno posterior → commit `e771e28`. Sin acción pendiente.
 
-## Nota de pausa (2026-08-11, activa)
+## Nota de pausa (2026-08-11, resuelta)
 
 `LOG-US3-FE-03` quedó GREEN (49 tests, 0 failed) y sin commitear tras el checkpoint;
-el humano eligió "Pausar aquí". `git diff --stat`: 141 inserciones / 1 deletion en 6
-archivos modificados (`package.json`, `package-lock.json`, `IncidentDashboardPage.tsx`,
-`index.ts`, `index.css`, `test/setup.ts`) + archivos nuevos (`DiagnosticTerminal.tsx`
-+ test, `context/DiagnosticStreamContext.tsx` + test, `hooks/useDiagnosticStream.ts` +
-test, `hooks/useDiagnosticStreamConnection.ts` + test, `utils/sanitizeMarkdown.ts` +
-test, `types/diagnosticStream.types.ts`). Sin regresiones sobre BE-01/DB-02.
+el humano eligió "Pausar aquí" originalmente y luego aprobó el commit → `5bbd6f3`.
+`git diff --stat` en su momento: 141 inserciones / 1 deletion en 6 archivos modificados
+(`package.json`, `package-lock.json`, `IncidentDashboardPage.tsx`, `index.ts`,
+`index.css`, `test/setup.ts`) + archivos nuevos (`DiagnosticTerminal.tsx` + test,
+`context/DiagnosticStreamContext.tsx` + test, `hooks/useDiagnosticStream.ts` + test,
+`hooks/useDiagnosticStreamConnection.ts` + test, `utils/sanitizeMarkdown.ts` + test,
+`types/diagnosticStream.types.ts`). Sin regresiones sobre BE-01/DB-02.
 
 Notas no bloqueantes registradas como deuda técnica en `docs/deuda-tecnica.md`:
 - `DEBT-001`: backend no emite señal SSE explícita de cierre (`event: complete`/`error`);
@@ -57,6 +59,19 @@ Nota menor no registrada como deuda (decisión de estilo, no un gap funcional):
   literales del ticket (`#0d1117`/`#39ff14`) por la restricción de no usar valores
   arbitrarios en Tailwind.
 
+## Ticket agregado post-cierre (2026-08-11): `LOG-US3-DB-02B`
+
+US3 ya había cerrado sus 3 tickets originales cuando, durante la orquestación de US4
+(`LOG-US4-BE-02`), surgió un `CONTRACT_GATE: DRIFT_DETECTED` genuino: ni el contrato ni
+el modelo de datos definían cómo el backend sabe qué `generatedScript` ejecutar en
+`POST /incidents/{id}/remediations`. Análisis técnico completo (Opción A: el cliente
+reenvía el script vía `requestBody`; Opción B: el backend lo deriva/persiste de forma
+autoritativa al generar el diagnóstico) presentado al humano, que eligió **Opción B**.
+Eso implica un refactor estructural sobre la persistencia ya completada de `LOG-US3-DB-02`
+(agregar columna `suggested_script` + extractor de bloque de código Markdown), por lo
+que se encapsuló en un ticket nuevo (`LOG-US3-DB-02B`) en vez de editarlo silenciosamente.
+Texto completo en `docs/tickets/tickets.md`. `LOG-US4-BE-02` fue enmendado (no ticket
+nuevo) para consumir el campo resultante — ver `.claude/state/orchestration/US4.md`.
+
 Para retomar: invocar de nuevo `orchestrate-user-story US3` (PASO 0 reconcilia este
-estado) y decidir si commitear tal cual o pedir correcciones antes de continuar a
-PASO 7 (validación final).
+estado) — quedaría un único ticket pendiente, `LOG-US3-DB-02B`.

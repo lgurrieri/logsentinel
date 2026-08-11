@@ -175,6 +175,21 @@
 
 
 
+#### `LOG-US3-DB-02B`: Captura Estructurada del Script de Remediación Sugerido
+
+* **Descripción:** Extender la persistencia del diagnóstico congelado (`LOG-US3-DB-02`) para capturar, en el mismo instante de la generación (cierre exitoso del stream SSE), el bloque de código de remediación sugerido por la IA como un campo estructurado independiente — en vez de que `LOG-US4-BE-02` dependa de que el cliente reenvíe el script o de parsearlo en el momento de la ejecución. Decisión de diseño (Opción B, aprobada 2026-08-11): el backend deriva y persiste el script de forma autoritativa al generar el diagnóstico; el cliente nunca provee código ejecutable en el flujo de remediación.
+* **Criterios de Aceptación Técnicos:**
+* Agregar la columna `suggested_script` (`TEXT`, nullable) a la tabla `incident_diagnostics` vía migración Flyway (próxima versión disponible; coordinar numeración con la migración pendiente de `LOG-US4-BE-02`, `V6__create_remediation_actions_table.sql`, si esta se commitea primero).
+* Extender el modelo de dominio `IncidentDiagnostic` (y su `IncidentDiagnosticJpaEntity` / `IncidentDiagnosticPersistenceAdapter`) con el campo `suggestedScript` (`String`, nullable).
+* Implementar un componente de dominio puro (ej. `SuggestedScriptExtractor`) que reciba el `diagnosticText` consolidado y extraiga el contenido del primer bloque de código Markdown delimitado por triple backtick (con o sin hint de lenguaje, ej. ` ```bash `, ` ```yaml `, ` ``` ` a secas). Si no existe ningún bloque de código, o el bloque no está correctamente cerrado, el resultado es `null` — no adivinar ni concatenar texto ambiguo.
+* Cobertura de tests unitarios obligatoria para el extractor cubriendo como mínimo: bloque con hint de lenguaje, bloque sin hint, múltiples bloques (documentar y testear la regla determinística elegida — se usa el primero), texto sin ningún bloque de código, y bloque sin cierre (backtick faltante).
+* Integrar el extractor en `StreamDiagnosticService.persistDiagnostic(...)` para poblar `suggestedScript` antes de guardar, sin alterar el comportamiento de streaming ya existente hacia el cliente (el parseo ocurre una sola vez sobre el texto ya consolidado, nunca fragmento a fragmento).
+* Actualizar el contrato OpenAPI: agregar `suggestedScript` (string, nullable) al schema `IncidentAnalysis`.
+* Actualizar los tests existentes que referencian el constructor/factory actual de 4 argumentos de `IncidentDiagnostic` (`StreamDiagnosticServiceTest`, `IncidentDiagnosticPersistenceAdapterIntegrationTest` con Testcontainers, y cualquier otro que rompa), sin dejar ningún test roto.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR) para cada pieza nueva — en particular el extractor, que debe nacer de un test que falle primero por cada caso límite listado arriba.
+
+
+
 #### `LOG-US3-FE-03`: Consola Terminal Interactiva en Frontend
 
 * **Descripción:** Desarrollar el componente visual de terminal interactiva encargado de conectarse al stream de datos, procesar Markdown al vuelo y asegurar un renderizado eficiente libre de parpadeos o saltos de pantalla (Layout Shift).
@@ -226,6 +241,7 @@
 * Diseñar la máquina de estados operando con transacciones independientes secuenciales configuradas mediante **`Propagation.REQUIRES_NEW`**.
 * **Flujo Transaccional:** 1. Transacción A (Commit Inmediato de estado `EXECUTING`) $\rightarrow$ 2. Fase de ejecución aislada libre en Sandbox $\rightarrow$ 3. Transacción B (Commit de Cierre con buffers finales de `stdout`/`stderr` en estado `SUCCESS` o `FAILED`).
 * **Nota (issue documental abierto):** el contrato OpenAPI (`RemediationAction.executionStatus`) todavía no incluye el estado intermedio `EXECUTING` ni un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE). Resolver al implementar este ticket.
+* **Resolución del drift de contrato (2026-08-11, Opción B):** `POST /incidents/{id}/remediations` no recibe `requestBody`. El controller obtiene `generatedScript` leyendo `IncidentDiagnostic.suggestedScript` (`LOG-US3-DB-02B`) del diagnóstico persistido asociado al incidente (relación uno a uno vía `incident_id`). Si no existe diagnóstico persistido para el incidente, o `suggestedScript` es `null` (la IA no generó un bloque de código parseable), el endpoint responde `409 Conflict` sin crear ningún registro en `remediation_actions`. Depende de `LOG-US3-DB-02B` — no puede cerrarse antes.
 
 
 
