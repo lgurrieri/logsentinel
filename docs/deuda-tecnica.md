@@ -50,3 +50,29 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   cliente para dejar de depender de la heurística de "¿hubo chunks antes de onerror?".
 * **Estado:** Abierto
 * **Detectado:** 2026-08-11
+
+---
+
+### `DEBT-002`: Ningún documento define el campo de identidad del autorizador de una remediación
+
+* **Origen:** `LOG-US4-FE-03` / narrativa de épica US4
+* **Descripción:** La narrativa de la épica US4 promete un "registro inmutable de qué se
+  alteró y **quién lo autorizó**", y el modal de doble confirmación de `LOG-US4-FE-03`
+  dice textualmente *"Esta acción quedará registrada bajo tu firma de auditoría"*. Sin
+  embargo, ningún documento (contrato OpenAPI, ticket `LOG-US4-BE-02`, ni la user-story)
+  define un campo concreto de usuario/aprobador en el schema `RemediationAction` ni en
+  la tabla `remediation_actions` — la respuesta del contrato solo tiene `id`,
+  `generatedScript`, `executionStatus`, `executedAt`, `executionLog`.
+* **Impacto:** Tal como está especificado hoy, ningún ticket implementa realmente captura
+  de identidad del aprobador — la "firma de auditoría" prometida en la UI no tiene
+  contraparte de persistencia. Si se implementa `LOG-US4-BE-02`/`FE-03` tal cual están
+  hoy, el registro de auditoría no podrá responder "quién" autorizó la ejecución, solo
+  "qué" y "cuándo".
+* **Sugerencia de resolución:** agregar un campo (ej. `authorizedBy`/`executedBy`) al
+  schema `RemediationAction` del contrato y a la tabla `remediation_actions`, poblado
+  desde la sesión/autenticación del usuario que confirma el modal — vía un ticket
+  dedicado (convención `LOG-CORE-INFRA-NN` o un nuevo `LOG-US4-BE-03`), dado que ningún
+  ticket actual de US4 lo cubre y requeriría además definir el mecanismo de autenticación
+  de usuarios (no resuelto en ninguna US anterior).
+* **Estado:** Abierto
+* **Detectado:** 2026-08-11

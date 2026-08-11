@@ -222,7 +222,7 @@
 
 * **Descripción:** Asegurar que el registro de auditoría de los scripts sea inmune a caídas catastróficas del hilo principal del backend.
 * **Criterios de Aceptación Técnicos:**
-* Crear la tabla `remediation_audits` para capturar metadatos, comandos y respuestas.
+* Crear la tabla `remediation_actions` para capturar metadatos, comandos y respuestas.
 * Diseñar la máquina de estados operando con transacciones independientes secuenciales configuradas mediante **`Propagation.REQUIRES_NEW`**.
 * **Flujo Transaccional:** 1. Transacción A (Commit Inmediato de estado `EXECUTING`) $\rightarrow$ 2. Fase de ejecución aislada libre en Sandbox $\rightarrow$ 3. Transacción B (Commit de Cierre con buffers finales de `stdout`/`stderr` en estado `SUCCESS` o `FAILED`).
 * **Nota (issue documental abierto):** el contrato OpenAPI (`RemediationAction.executionStatus`) todavía no incluye el estado intermedio `EXECUTING` ni un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE). Resolver al implementar este ticket.
