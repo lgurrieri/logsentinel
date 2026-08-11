@@ -62,7 +62,8 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   embargo, ningún documento (contrato OpenAPI, ticket `LOG-US4-BE-02`, ni la user-story)
   define un campo concreto de usuario/aprobador en el schema `RemediationAction` ni en
   la tabla `remediation_actions` — la respuesta del contrato solo tiene `id`,
-  `generatedScript`, `executionStatus`, `executedAt`, `executionLog`.
+  `generatedScript`, `executionStatus`, `executedAt`, `stdoutLog`, `stderrLog`
+  (campos actualizados por `LOG-US4-BE-02B`).
 * **Impacto:** Tal como está especificado hoy, ningún ticket implementa realmente captura
   de identidad del aprobador — la "firma de auditoría" prometida en la UI no tiene
   contraparte de persistencia. Si se implementa `LOG-US4-BE-02`/`FE-03` tal cual están
@@ -74,5 +75,30 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   dedicado (convención `LOG-CORE-INFRA-NN` o un nuevo `LOG-US4-BE-03`), dado que ningún
   ticket actual de US4 lo cubre y requeriría además definir el mecanismo de autenticación
   de usuarios (no resuelto en ninguna US anterior).
+* **Estado:** Abierto
+* **Detectado:** 2026-08-11
+
+---
+
+### `DEBT-003`: `GET /incidents/{id}` está en el contrato pero no implementado — `RemediationPanel` no está montado en ninguna página
+
+* **Origen:** `LOG-US4-FE-03`
+* **Descripción:** `docs/openapi: 3.0.yml` define `GET /incidents/{id}` (respuesta
+  `IncidentDetail`), pero `IncidentController.java` solo implementa
+  `@PostMapping` — no existe el `@GetMapping` correspondiente. El componente
+  `RemediationPanel` (caja de código + modal de doble aprobación + terminal de
+  stdout/stderr) quedó completamente implementado, testeado (51 tests) y exportado
+  en el barrel de `frontend/src/features/remediations/`, pero **no se montó** en
+  `IncidentDashboardPage.tsx` porque hacerlo requeriría un fetch contra un endpoint
+  que no existe en el backend.
+* **Impacto:** La feature de remediación construida en `LOG-US4-FE-03` es
+  inalcanzable para el usuario final hasta que se resuelva este gap — existe como
+  componente aislado y probado, pero no forma parte de ningún flujo navegable.
+* **Sugerencia de resolución:** ticket de seguimiento (ej. `LOG-US4-BE-03` o
+  `LOG-US4-FE-04`) que (a) implemente `GET /incidents/{id}` en el backend
+  (`IncidentController` + caso de uso + mapeo a `IncidentDetail`, incluyendo el
+  análisis/diagnóstico asociado con su `suggestedScript`), y (b) agregue el fetch +
+  wiring de `RemediationPanel` en `IncidentDashboardPage.tsx` una vez ese endpoint
+  exista.
 * **Estado:** Abierto
 * **Detectado:** 2026-08-11
