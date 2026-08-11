@@ -30,7 +30,7 @@ Rama: `feature/us3-streaming-diagnostico-sse`
 |---|---|---|---|---|---|---|
 | LOG-US3-BE-01 | logsentinel-backend-implementer | completed | 1 | c34a432 | humano | 2026-08-11 |
 | LOG-US3-DB-02 | logsentinel-backend-implementer | completed | 1 | e771e28 | humano | 2026-08-11 |
-| LOG-US3-FE-03 | logsentinel-frontend-implementer | paused | 1 | — | — | — |
+| LOG-US3-FE-03 | logsentinel-frontend-implementer | completed | 1 | 5bbd6f3 | humano | 2026-08-11 |
 
 ## Nota de pausa (2026-08-11, resuelta)
 
