@@ -68,7 +68,7 @@ PASO 2.5).
 | LOG-US4-BE-02 | logsentinel-backend-implementer | completed | 2 | a52d465 | humano | 2026-08-11 |
 | LOG-US4-TEST-03 | logsentinel-backend-implementer | completed | 1 | b68e9bc | humano | 2026-08-11 |
 | LOG-US4-BE-02B | logsentinel-backend-implementer | completed | 1 | 13c99c0 | humano | 2026-08-11 |
-| LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | — | humano | 2026-08-11 |
+| LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | 9390216 | humano | 2026-08-11 |
 | LOG-US4-E2E-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
 
 ## RESUELTO (2026-08-11): CONTRACT_GATE: DRIFT_DETECTED de LOG-US4-FE-03 (stdout/stderr)
