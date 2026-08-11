@@ -61,6 +61,18 @@ logsentinel:
   rag:
     # Cantidad de fragmentos (runbook_chunks) a recuperar por búsqueda semántica (US2).
     top-k: 3
+  sandbox:
+    # SecuritySandbox (US4): allowlist de comandos base permitidos en scripts de
+    # remediación, separados por coma. Cualquier comando fuera de esta lista, o
+    # que contenga un metacaracter clásico de inyección Bash (| && $( ` >), es
+    # rechazado antes de invocar ProcessBuilder.
+    allowlist: echo,ansible-playbook,systemctl
+    # Usuario del sistema operativo bajo el cual DEBE correr la JVM para que el
+    # sandbox acepte ejecutar cualquier subproceso — nunca 'root'. Coincide con
+    # el usuario non-root del stage runtime de backend/Dockerfile (USER appuser).
+    executor-user: appuser
+    # Shell usado para invocar el script aislado (`{shell} -c "{script}"`).
+    shell: bash
 
 # --- Actuator: Endpoints de salud y métricas ---
 management:
