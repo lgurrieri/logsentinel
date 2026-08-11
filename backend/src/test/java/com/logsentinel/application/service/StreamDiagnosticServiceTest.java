@@ -157,7 +157,35 @@ class StreamDiagnosticServiceTest {
         verify(incidentDiagnosticRepository).save(diagnosticCaptor.capture());
         assertThat(diagnosticCaptor.getValue().getIncidentId()).isEqualTo(incidentId);
         assertThat(diagnosticCaptor.getValue().getDiagnosticText()).isEqualTo("Root cause: pool exhaustion.");
+        assertThat(diagnosticCaptor.getValue().getSuggestedScript()).isNull();
         verify(listener).onComplete(null);
+    }
+
+    @Test
+    @DisplayName("should extract the suggested script from the fully consolidated diagnostic text exactly once, "
+            + "never fragment by fragment (LOG-US3-DB-02B)")
+    void should_extract_suggested_script_from_consolidated_diagnostic_text() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: connection pool exhausted", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs())).willReturn(List.of());
+        willAnswer(invocation -> {
+            // The opening fence is split across chunks on purpose: if extraction ran
+            // per-fragment instead of on the consolidated text, neither fragment alone
+            // would contain a well-formed fenced code block.
+            Consumer<String> onChunk = invocation.getArgument(2);
+            onChunk.accept("Root cause: pool exhaustion.\n\nRemediation:\n```bash\n");
+            onChunk.accept("systemctl restart payment-gw\n");
+            onChunk.accept("```\n");
+            return null;
+        }).given(diagnosticChatPort).streamDiagnosis(anyString(), anyString(), any());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        ArgumentCaptor<IncidentDiagnostic> diagnosticCaptor = ArgumentCaptor.forClass(IncidentDiagnostic.class);
+        verify(incidentDiagnosticRepository).save(diagnosticCaptor.capture());
+        assertThat(diagnosticCaptor.getValue().getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
     }
 
     @Test

@@ -41,7 +41,7 @@ class IncidentDiagnosticPersistenceAdapterIntegrationTest {
                 Incident.createNew("adapter-test-system", Urgency.CRITICAL, "ERROR: pool exhausted"));
 
         IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
-                IncidentDiagnostic.createNew(incident.getId(), "Root cause: connection pool exhaustion."));
+                IncidentDiagnostic.createNew(incident.getId(), "Root cause: connection pool exhaustion.", null));
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getIncidentId()).isEqualTo(incident.getId());
@@ -55,11 +55,37 @@ class IncidentDiagnosticPersistenceAdapterIntegrationTest {
         Incident incident = incidentPersistenceAdapter.save(
                 Incident.createNew("adapter-test-duplicate-system", Urgency.HIGH, "FATAL: auth unreachable"));
         incidentDiagnosticPersistenceAdapter.save(
-                IncidentDiagnostic.createNew(incident.getId(), "First diagnostic for this incident."));
+                IncidentDiagnostic.createNew(incident.getId(), "First diagnostic for this incident.", null));
 
         assertThatThrownBy(() ->
                 incidentDiagnosticPersistenceAdapter.save(
-                        IncidentDiagnostic.createNew(incident.getId(), "A conflicting second diagnostic."))
+                        IncidentDiagnostic.createNew(incident.getId(), "A conflicting second diagnostic.", null))
         ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("should round-trip a non-null suggestedScript through the adapter (LOG-US3-DB-02B)")
+    void should_round_trip_suggested_script() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-suggested-script", Urgency.CRITICAL, "ERROR: pool exhausted"));
+
+        IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(),
+                        "Root cause: connection pool exhaustion.\n```bash\nsystemctl restart payment-gw\n```",
+                        "systemctl restart payment-gw"));
+
+        assertThat(saved.getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
+    }
+
+    @Test
+    @DisplayName("should round-trip a null suggestedScript through the adapter (LOG-US3-DB-02B)")
+    void should_round_trip_null_suggested_script() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-null-suggested-script", Urgency.LOW, "WARN: minor blip"));
+
+        IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(), "Root cause: minor blip, no remediation needed.", null));
+
+        assertThat(saved.getSuggestedScript()).isNull();
     }
 }

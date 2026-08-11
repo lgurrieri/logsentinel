@@ -21,7 +21,7 @@ public class IncidentDiagnosticPersistenceAdapter implements IncidentDiagnosticR
     @Override
     public IncidentDiagnostic save(IncidentDiagnostic diagnostic) {
         IncidentDiagnosticJpaEntity entity = new IncidentDiagnosticJpaEntity(
-                diagnostic.getIncidentId(), diagnostic.getDiagnosticText());
+                diagnostic.getIncidentId(), diagnostic.getDiagnosticText(), diagnostic.getSuggestedScript());
         IncidentDiagnosticJpaEntity saved = jpaRepository.save(entity);
         return saved.toDomain();
     }

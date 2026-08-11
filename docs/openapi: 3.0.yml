@@ -168,6 +168,15 @@ components:
         diagnosticOutput:
           type: string
           example: "El microservicio saturó el pool de conexiones debido a un pico de tráfico sin cierre de cursores."
+        suggestedScript:
+          type: string
+          nullable: true
+          description: >
+            Script de remediación derivado autoritativamente por el backend a partir
+            del bloque de código Markdown del diagnóstico consolidado (LOG-US3-DB-02B,
+            decisión Opción B aprobada 2026-08-11). null si la IA no generó un bloque
+            de código parseable.
+          example: "systemctl restart payment-gw"
         tokensUsed:
           type: integer
           example: 845

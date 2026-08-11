@@ -94,4 +94,34 @@ class IncidentDiagnosticsTableIntegrationTest {
         assertThat(result.get("created_at")).isNotNull();
         assertThat(result.get("diagnostic_text")).isEqualTo("Root cause: connection pool exhaustion detected.");
     }
+
+    @Test
+    @DisplayName("should accept and round-trip a non-null suggested_script value (LOG-US3-DB-02B)")
+    void should_accept_and_round_trip_suggested_script() {
+        UUID incidentId = insertIncident();
+
+        jdbcTemplate.update(
+                "INSERT INTO incident_diagnostics (incident_id, diagnostic_text, suggested_script) VALUES (?, ?, ?)",
+                incidentId, "Root cause: connection pool exhaustion detected.", "systemctl restart payment-gw");
+
+        var result = jdbcTemplate.queryForMap(
+                "SELECT suggested_script FROM incident_diagnostics WHERE incident_id = ?",
+                incidentId);
+        assertThat(result.get("suggested_script")).isEqualTo("systemctl restart payment-gw");
+    }
+
+    @Test
+    @DisplayName("should accept a null suggested_script — the column is nullable (LOG-US3-DB-02B)")
+    void should_accept_null_suggested_script() {
+        UUID incidentId = insertIncident();
+
+        jdbcTemplate.update(
+                "INSERT INTO incident_diagnostics (incident_id, diagnostic_text, suggested_script) VALUES (?, ?, ?)",
+                incidentId, "Root cause: connection pool exhaustion detected.", (Object) null);
+
+        var result = jdbcTemplate.queryForMap(
+                "SELECT suggested_script FROM incident_diagnostics WHERE incident_id = ?",
+                incidentId);
+        assertThat(result.get("suggested_script")).isNull();
+    }
 }
