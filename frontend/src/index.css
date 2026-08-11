@@ -7,3 +7,14 @@
 body {
   @apply bg-zinc-950 text-zinc-100 font-sans;
 }
+
+/* Cursor parpadeante de la consola de diagnóstico (LOG-US3-FE-03). */
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.terminal-cursor {
+  animation: blink 1s step-end infinite;
+}

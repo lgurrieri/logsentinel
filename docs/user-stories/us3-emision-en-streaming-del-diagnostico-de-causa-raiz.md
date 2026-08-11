@@ -19,10 +19,10 @@
 
 ```gherkin
 Escenario: Consumo interactivo del diagnóstico vía Server-Sent Events
-  Dado que un cliente Frontend establece una conexión GET al endpoint "/api/v1/incidents/{id}/stream"
+  Dado que un cliente Frontend establece una conexión GET al endpoint "/api/v1/incidents/{id}/diagnostic/stream"
   Cuando el orquestador de Spring Boot comienza a recibir tokens desde la API del LLM
   Entonces el servidor debe mantener la conexión abierta enviando eventos con la cabecera "Content-Type: text/event-stream"
-  Y al finalizar la transmisión, el texto completo del diagnóstico debe quedar persistido en "incident_analyses".
+  Y al finalizar la transmisión, el texto completo del diagnóstico debe quedar persistido en "incident_diagnostics".
 
 ```
 
