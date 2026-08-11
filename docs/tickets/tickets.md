@@ -240,7 +240,7 @@
 * Crear la tabla `remediation_actions` para capturar metadatos, comandos y respuestas.
 * Diseñar la máquina de estados operando con transacciones independientes secuenciales configuradas mediante **`Propagation.REQUIRES_NEW`**.
 * **Flujo Transaccional:** 1. Transacción A (Commit Inmediato de estado `EXECUTING`) $\rightarrow$ 2. Fase de ejecución aislada libre en Sandbox $\rightarrow$ 3. Transacción B (Commit de Cierre con buffers finales de `stdout`/`stderr` en estado `SUCCESS` o `FAILED`).
-* **Nota (issue documental abierto):** el contrato OpenAPI (`RemediationAction.executionStatus`) todavía no incluye el estado intermedio `EXECUTING` ni un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE). Resolver al implementar este ticket.
+* **Nota (issue documental, parcialmente resuelto 2026-08-11):** el contrato OpenAPI (`RemediationAction.executionStatus`) ya incluye el estado intermedio `EXECUTING`. Sigue abierto: no existe todavía un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE) — resolver al implementar ese ticket.
 * **Resolución del drift de contrato (2026-08-11, Opción B):** `POST /incidents/{id}/remediations` no recibe `requestBody`. El controller obtiene `generatedScript` leyendo `IncidentDiagnostic.suggestedScript` (`LOG-US3-DB-02B`) del diagnóstico persistido asociado al incidente (relación uno a uno vía `incident_id`). Si no existe diagnóstico persistido para el incidente, o `suggestedScript` es `null` (la IA no generó un bloque de código parseable), el endpoint responde `409 Conflict` sin crear ningún registro en `remediation_actions`. Depende de `LOG-US3-DB-02B` — no puede cerrarse antes.
 
 
