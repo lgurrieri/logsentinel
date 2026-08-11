@@ -12,8 +12,10 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * JPA entity mapping to the 'remediation_actions' table (LOG-US4-BE-02).
- * NOT exposed outside the persistence adapter - domain model is used instead.
+ * JPA entity mapping to the 'remediation_actions' table (LOG-US4-BE-02). Since
+ * LOG-US4-BE-02B, {@code stdout_log}/{@code stderr_log} replace the single
+ * combined {@code execution_log} column. NOT exposed outside the persistence
+ * adapter - domain model is used instead.
  */
 @Entity
 @Table(name = "remediation_actions")
@@ -32,8 +34,11 @@ public class RemediationActionJpaEntity {
     @Column(name = "execution_status", nullable = false, length = 20)
     private String executionStatus;
 
-    @Column(name = "execution_log", columnDefinition = "TEXT")
-    private String executionLog;
+    @Column(name = "stdout_log", columnDefinition = "TEXT")
+    private String stdoutLog;
+
+    @Column(name = "stderr_log", columnDefinition = "TEXT")
+    private String stderrLog;
 
     @Column(name = "executed_at")
     private OffsetDateTime executedAt;
@@ -47,12 +52,14 @@ public class RemediationActionJpaEntity {
     }
 
     public RemediationActionJpaEntity(UUID id, UUID incidentId, String generatedScript, String executionStatus,
-                                        String executionLog, OffsetDateTime executedAt, OffsetDateTime createdAt) {
+                                        String stdoutLog, String stderrLog, OffsetDateTime executedAt,
+                                        OffsetDateTime createdAt) {
         this.id = id;
         this.incidentId = incidentId;
         this.generatedScript = generatedScript;
         this.executionStatus = executionStatus;
-        this.executionLog = executionLog;
+        this.stdoutLog = stdoutLog;
+        this.stderrLog = stderrLog;
         this.executedAt = executedAt;
         // NOTE: on INSERT, @CreationTimestamp always overwrites this with NOW() —
         // this explicit value only matters (and is preserved as-is) on UPDATE/merge,
@@ -76,8 +83,12 @@ public class RemediationActionJpaEntity {
         return executionStatus;
     }
 
-    public String getExecutionLog() {
-        return executionLog;
+    public String getStdoutLog() {
+        return stdoutLog;
+    }
+
+    public String getStderrLog() {
+        return stderrLog;
     }
 
     public OffsetDateTime getExecutedAt() {

@@ -47,13 +47,14 @@ class RemediationActionPersistenceAdapterIntegrationTest {
         assertThat(saved.getIncidentId()).isEqualTo(incident.getId());
         assertThat(saved.getGeneratedScript()).isEqualTo("echo hello-sandbox");
         assertThat(saved.getExecutionStatus()).isEqualTo(RemediationStatus.EXECUTING);
-        assertThat(saved.getExecutionLog()).isNull();
+        assertThat(saved.getStdoutLog()).isNull();
+        assertThat(saved.getStderrLog()).isNull();
         assertThat(saved.getExecutedAt()).isNull();
         assertThat(saved.getCreatedAt()).isNotNull();
     }
 
     @Test
-    @DisplayName("should update status/log/executedAt on closure while preserving id and createdAt")
+    @DisplayName("should update status/stdout/stderr/executedAt on closure while preserving id and createdAt")
     void should_update_closure_fields_while_preserving_id_and_created_at() {
         Incident incident = incidentPersistenceAdapter.save(
                 Incident.createNew("adapter-test-closure-system", Urgency.HIGH, "FATAL: disk full"));
@@ -62,12 +63,13 @@ class RemediationActionPersistenceAdapterIntegrationTest {
 
         OffsetDateTime executedAt = OffsetDateTime.now();
         RemediationAction closed = remediationActionPersistenceAdapter.update(
-                executing.closeWith(RemediationStatus.SUCCESS, "hello-sandbox\n", executedAt));
+                executing.closeWith(RemediationStatus.SUCCESS, "hello-sandbox\n", "", executedAt));
 
         assertThat(closed.getId()).isEqualTo(executing.getId());
         assertThat(closed.getCreatedAt()).isEqualTo(executing.getCreatedAt());
         assertThat(closed.getExecutionStatus()).isEqualTo(RemediationStatus.SUCCESS);
-        assertThat(closed.getExecutionLog()).isEqualTo("hello-sandbox\n");
+        assertThat(closed.getStdoutLog()).isEqualTo("hello-sandbox\n");
+        assertThat(closed.getStderrLog()).isEqualTo("");
         assertThat(closed.getExecutedAt()).isNotNull();
     }
 

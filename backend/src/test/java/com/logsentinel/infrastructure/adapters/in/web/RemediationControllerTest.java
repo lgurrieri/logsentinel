@@ -54,7 +54,7 @@ class RemediationControllerTest {
         UUID actionId = UUID.randomUUID();
         OffsetDateTime executedAt = OffsetDateTime.now();
         RemediationAction closed = new RemediationAction(actionId, incidentId, "systemctl restart payment-gw",
-                RemediationStatus.SUCCESS, "restarted\n", executedAt, executedAt);
+                RemediationStatus.SUCCESS, "restarted\n", "", executedAt, executedAt);
         given(executeRemediationUseCase.execute(eq(new ExecuteRemediationCommand(incidentId)))).willReturn(closed);
 
         mockMvc.perform(post("/api/v1/incidents/{id}/remediations", incidentId))
@@ -62,7 +62,8 @@ class RemediationControllerTest {
                 .andExpect(jsonPath("$.id").value(actionId.toString()))
                 .andExpect(jsonPath("$.generatedScript").value("systemctl restart payment-gw"))
                 .andExpect(jsonPath("$.executionStatus").value("SUCCESS"))
-                .andExpect(jsonPath("$.executionLog").value("restarted\n"))
+                .andExpect(jsonPath("$.stdoutLog").value("restarted\n"))
+                .andExpect(jsonPath("$.stderrLog").value(""))
                 .andExpect(jsonPath("$.executedAt").exists());
     }
 

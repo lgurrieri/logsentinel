@@ -82,7 +82,8 @@ public class ExecuteRemediationService implements ExecuteRemediationUseCase {
         try {
             SandboxExecutionResult result = securitySandbox.executeInIsolation(
                     generatedScript, sandboxTimeoutSeconds, TimeUnit.SECONDS);
-            return stateMachine.commitClosure(executing, result.exitCode(), result.output(), OffsetDateTime.now());
+            return stateMachine.commitClosure(executing, result.exitCode(), result.stdout(), result.stderr(),
+                    OffsetDateTime.now());
         } catch (RuntimeException sandboxRejection) {
             log.error("Sandbox refused to execute remediation script", Map.of(
                     "remediationActionId", String.valueOf(executing.getId()),
@@ -90,7 +91,7 @@ public class ExecuteRemediationService implements ExecuteRemediationUseCase {
                     "cause", String.valueOf(sandboxRejection.getMessage())
             ));
             return stateMachine.commitClosure(executing, SANDBOX_REJECTED_EXIT_CODE,
-                    "Sandbox refused execution: " + sandboxRejection.getMessage(), OffsetDateTime.now());
+                    null, "Sandbox refused execution: " + sandboxRejection.getMessage(), OffsetDateTime.now());
         }
     }
 

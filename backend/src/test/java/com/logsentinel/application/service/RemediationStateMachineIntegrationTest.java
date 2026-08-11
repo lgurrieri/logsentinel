@@ -76,7 +76,7 @@ class RemediationStateMachineIntegrationTest {
                 Incident.createNew("state-machine-it-success-system", Urgency.HIGH, "FATAL: pool exhausted"));
         RemediationAction executing = stateMachine.commitExecuting(incident.getId(), "echo hello-sandbox");
 
-        stateMachine.commitClosure(executing, 0, "hello-sandbox\n", OffsetDateTime.now());
+        stateMachine.commitClosure(executing, 0, "hello-sandbox\n", "", OffsetDateTime.now());
 
         String status = jdbcTemplate.queryForObject(
                 "SELECT status FROM incidents WHERE id = ?", String.class, incident.getId());
@@ -90,7 +90,7 @@ class RemediationStateMachineIntegrationTest {
                 Incident.createNew("state-machine-it-failed-system", Urgency.MEDIUM, "WARN: retry limit reached"));
         RemediationAction executing = stateMachine.commitExecuting(incident.getId(), "echo boom");
 
-        stateMachine.commitClosure(executing, 1, "boom\n", OffsetDateTime.now());
+        stateMachine.commitClosure(executing, 1, "", "boom\n", OffsetDateTime.now());
 
         String status = jdbcTemplate.queryForObject(
                 "SELECT status FROM incidents WHERE id = ?", String.class, incident.getId());
@@ -110,5 +110,21 @@ class RemediationStateMachineIntegrationTest {
                 "SELECT COUNT(*) FROM remediation_actions WHERE incident_id = ?",
                 Integer.class, nonExistentIncidentId);
         assertThat(count).isEqualTo(0);
+    }
+
+    @Test
+    @DisplayName("commitClosure (Transaction B) persists stdout_log and stderr_log in independent columns against the real schema (LOG-US4-BE-02B)")
+    void should_persist_stdout_and_stderr_in_independent_columns() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("state-machine-it-split-streams-system", Urgency.HIGH, "FATAL: disk full"));
+        RemediationAction executing = stateMachine.commitExecuting(incident.getId(), "ls / /nonexistent-path");
+
+        stateMachine.commitClosure(executing, 1, "bin\netc\n", "ls: /nonexistent-path: No such file or directory\n",
+                OffsetDateTime.now());
+
+        var row = jdbcTemplate.queryForMap(
+                "SELECT stdout_log, stderr_log FROM remediation_actions WHERE id = ?", executing.getId());
+        assertThat(row.get("stdout_log")).isEqualTo("bin\netc\n");
+        assertThat(row.get("stderr_log")).isEqualTo("ls: /nonexistent-path: No such file or directory\n");
     }
 }

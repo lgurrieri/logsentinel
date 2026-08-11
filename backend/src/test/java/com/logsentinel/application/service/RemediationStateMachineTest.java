@@ -58,8 +58,8 @@ class RemediationStateMachineTest {
         given(remediationActionRepository.save(any())).willAnswer(invocation -> {
             RemediationAction submitted = invocation.getArgument(0);
             return new RemediationAction(UUID.randomUUID(), submitted.getIncidentId(), submitted.getGeneratedScript(),
-                    submitted.getExecutionStatus(), submitted.getExecutionLog(), submitted.getExecutedAt(),
-                    OffsetDateTime.now());
+                    submitted.getExecutionStatus(), submitted.getStdoutLog(), submitted.getStderrLog(),
+                    submitted.getExecutedAt(), OffsetDateTime.now());
         });
 
         RemediationAction result = stateMachine.commitExecuting(incidentId, "echo hello-sandbox");
@@ -67,7 +67,8 @@ class RemediationStateMachineTest {
         assertThat(result.getId()).isNotNull();
         assertThat(result.getIncidentId()).isEqualTo(incidentId);
         assertThat(result.getExecutionStatus()).isEqualTo(RemediationStatus.EXECUTING);
-        assertThat(result.getExecutionLog()).isNull();
+        assertThat(result.getStdoutLog()).isNull();
+        assertThat(result.getStderrLog()).isNull();
         assertThat(result.getExecutedAt()).isNull();
 
         ArgumentCaptor<RemediationAction> captor = ArgumentCaptor.forClass(RemediationAction.class);
@@ -93,14 +94,15 @@ class RemediationStateMachineTest {
     void should_close_with_success_and_resolve_incident_when_exit_code_zero() {
         stateMachine = new RemediationStateMachine(remediationActionRepository, incidentRepository);
         RemediationAction executing = new RemediationAction(UUID.randomUUID(), incidentId, "echo hello-sandbox",
-                RemediationStatus.EXECUTING, null, null, OffsetDateTime.now());
+                RemediationStatus.EXECUTING, null, null, null, OffsetDateTime.now());
         given(remediationActionRepository.update(any())).willAnswer(invocation -> invocation.getArgument(0));
         OffsetDateTime executedAt = OffsetDateTime.now();
 
-        RemediationAction result = stateMachine.commitClosure(executing, 0, "hello-sandbox\n", executedAt);
+        RemediationAction result = stateMachine.commitClosure(executing, 0, "hello-sandbox\n", "", executedAt);
 
         assertThat(result.getExecutionStatus()).isEqualTo(RemediationStatus.SUCCESS);
-        assertThat(result.getExecutionLog()).isEqualTo("hello-sandbox\n");
+        assertThat(result.getStdoutLog()).isEqualTo("hello-sandbox\n");
+        assertThat(result.getStderrLog()).isEqualTo("");
         assertThat(result.getExecutedAt()).isEqualTo(executedAt);
         verify(incidentRepository).updateStatus(incidentId, IncidentStatus.RESOLVED);
     }
@@ -110,12 +112,14 @@ class RemediationStateMachineTest {
     void should_close_with_failed_and_not_resolve_incident_when_exit_code_nonzero() {
         stateMachine = new RemediationStateMachine(remediationActionRepository, incidentRepository);
         RemediationAction executing = new RemediationAction(UUID.randomUUID(), incidentId, "echo hello-sandbox",
-                RemediationStatus.EXECUTING, null, null, OffsetDateTime.now());
+                RemediationStatus.EXECUTING, null, null, null, OffsetDateTime.now());
         given(remediationActionRepository.update(any())).willAnswer(invocation -> invocation.getArgument(0));
 
-        RemediationAction result = stateMachine.commitClosure(executing, 1, "boom\n", OffsetDateTime.now());
+        RemediationAction result = stateMachine.commitClosure(executing, 1, "", "boom\n", OffsetDateTime.now());
 
         assertThat(result.getExecutionStatus()).isEqualTo(RemediationStatus.FAILED);
+        assertThat(result.getStdoutLog()).isEqualTo("");
+        assertThat(result.getStderrLog()).isEqualTo("boom\n");
         verify(incidentRepository, never()).updateStatus(any(), any());
     }
 }

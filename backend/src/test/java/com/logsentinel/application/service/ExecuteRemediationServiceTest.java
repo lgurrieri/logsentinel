@@ -66,12 +66,12 @@ class ExecuteRemediationServiceTest {
         IncidentDiagnostic diagnostic = IncidentDiagnostic.createNew(incidentId, "diagnostic text", "echo hello-sandbox");
         given(incidentDiagnosticRepository.findByIncidentId(incidentId)).willReturn(Optional.of(diagnostic));
         RemediationAction executing = new RemediationAction(UUID.randomUUID(), incidentId, "echo hello-sandbox",
-                RemediationStatus.EXECUTING, null, null, OffsetDateTime.now());
+                RemediationStatus.EXECUTING, null, null, null, OffsetDateTime.now());
         given(stateMachine.commitExecuting(incidentId, "echo hello-sandbox")).willReturn(executing);
         given(securitySandbox.executeInIsolation(eq("echo hello-sandbox"), anyLong(), any(TimeUnit.class)))
-                .willReturn(new SandboxExecutionResult(0, "hello-sandbox\n", false));
-        RemediationAction closed = executing.closeWith(RemediationStatus.SUCCESS, "hello-sandbox\n", OffsetDateTime.now());
-        given(stateMachine.commitClosure(eq(executing), eq(0), eq("hello-sandbox\n"), any())).willReturn(closed);
+                .willReturn(new SandboxExecutionResult(0, "hello-sandbox\n", "", false));
+        RemediationAction closed = executing.closeWith(RemediationStatus.SUCCESS, "hello-sandbox\n", "", OffsetDateTime.now());
+        given(stateMachine.commitClosure(eq(executing), eq(0), eq("hello-sandbox\n"), eq(""), any())).willReturn(closed);
 
         RemediationAction result = service.execute(new ExecuteRemediationCommand(incidentId));
 
@@ -81,7 +81,7 @@ class ExecuteRemediationServiceTest {
         inOrder.verify(incidentDiagnosticRepository).findByIncidentId(incidentId);
         inOrder.verify(stateMachine).commitExecuting(incidentId, "echo hello-sandbox");
         inOrder.verify(securitySandbox).executeInIsolation(eq("echo hello-sandbox"), anyLong(), any(TimeUnit.class));
-        inOrder.verify(stateMachine).commitClosure(eq(executing), eq(0), eq("hello-sandbox\n"), any());
+        inOrder.verify(stateMachine).commitClosure(eq(executing), eq(0), eq("hello-sandbox\n"), eq(""), any());
     }
 
     @Test
@@ -91,16 +91,16 @@ class ExecuteRemediationServiceTest {
         IncidentDiagnostic diagnostic = IncidentDiagnostic.createNew(incidentId, "diagnostic text", "echo boom");
         given(incidentDiagnosticRepository.findByIncidentId(incidentId)).willReturn(Optional.of(diagnostic));
         RemediationAction executing = new RemediationAction(UUID.randomUUID(), incidentId, "echo boom",
-                RemediationStatus.EXECUTING, null, null, OffsetDateTime.now());
+                RemediationStatus.EXECUTING, null, null, null, OffsetDateTime.now());
         given(stateMachine.commitExecuting(incidentId, "echo boom")).willReturn(executing);
         given(securitySandbox.executeInIsolation(eq("echo boom"), anyLong(), any(TimeUnit.class)))
-                .willReturn(new SandboxExecutionResult(1, "boom\n", false));
-        given(stateMachine.commitClosure(any(), anyInt(), anyString(), any()))
-                .willReturn(executing.closeWith(RemediationStatus.FAILED, "boom\n", OffsetDateTime.now()));
+                .willReturn(new SandboxExecutionResult(1, "", "boom\n", false));
+        given(stateMachine.commitClosure(any(), anyInt(), anyString(), anyString(), any()))
+                .willReturn(executing.closeWith(RemediationStatus.FAILED, "", "boom\n", OffsetDateTime.now()));
 
         service.execute(new ExecuteRemediationCommand(incidentId));
 
-        verify(stateMachine).commitClosure(eq(executing), eq(1), eq("boom\n"), any());
+        verify(stateMachine).commitClosure(eq(executing), eq(1), eq(""), eq("boom\n"), any());
     }
 
     @Test
@@ -110,21 +110,24 @@ class ExecuteRemediationServiceTest {
         IncidentDiagnostic diagnostic = IncidentDiagnostic.createNew(incidentId, "diagnostic text", "rm -rf /tmp");
         given(incidentDiagnosticRepository.findByIncidentId(incidentId)).willReturn(Optional.of(diagnostic));
         RemediationAction executing = new RemediationAction(UUID.randomUUID(), incidentId, "rm -rf /tmp",
-                RemediationStatus.EXECUTING, null, null, OffsetDateTime.now());
+                RemediationStatus.EXECUTING, null, null, null, OffsetDateTime.now());
         given(stateMachine.commitExecuting(incidentId, "rm -rf /tmp")).willReturn(executing);
         given(securitySandbox.executeInIsolation(eq("rm -rf /tmp"), anyLong(), any(TimeUnit.class)))
                 .willThrow(new InvalidRemediationScriptException("command not in allowlist"));
-        given(stateMachine.commitClosure(any(), anyInt(), anyString(), any()))
-                .willReturn(executing.closeWith(RemediationStatus.FAILED, "rejected", OffsetDateTime.now()));
+        given(stateMachine.commitClosure(any(), anyInt(), any(), anyString(), any()))
+                .willReturn(executing.closeWith(RemediationStatus.FAILED, null, "rejected", OffsetDateTime.now()));
 
         RemediationAction result = service.execute(new ExecuteRemediationCommand(incidentId));
 
         assertThat(result.getExecutionStatus()).isEqualTo(RemediationStatus.FAILED);
         ArgumentCaptor<Integer> exitCodeCaptor = ArgumentCaptor.forClass(Integer.class);
-        ArgumentCaptor<String> logCaptor = ArgumentCaptor.forClass(String.class);
-        verify(stateMachine).commitClosure(eq(executing), exitCodeCaptor.capture(), logCaptor.capture(), any());
+        ArgumentCaptor<String> stdoutCaptor = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> stderrCaptor = ArgumentCaptor.forClass(String.class);
+        verify(stateMachine).commitClosure(eq(executing), exitCodeCaptor.capture(), stdoutCaptor.capture(),
+                stderrCaptor.capture(), any());
         assertThat(exitCodeCaptor.getValue()).isNotZero();
-        assertThat(logCaptor.getValue()).contains("command not in allowlist");
+        assertThat(stdoutCaptor.getValue()).isNull();
+        assertThat(stderrCaptor.getValue()).contains("command not in allowlist");
     }
 
     @Test

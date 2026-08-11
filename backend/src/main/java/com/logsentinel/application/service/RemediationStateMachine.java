@@ -28,9 +28,11 @@ import java.util.UUID;
  * {@link #commitClosure} is Transaction B — it commits once the isolated sandbox
  * execution has concluded, deriving {@code SUCCESS}/{@code FAILED} from the process
  * exit code, and additionally resolving the parent incident when the script
- * succeeded. The sandbox execution phase in between MUST NOT be wrapped in either
- * transaction (potentially slow external I/O must never hold a DB connection from
- * the pool) — that phase is orchestrated by {@code ExecuteRemediationService}.
+ * succeeded. Since LOG-US4-BE-02B, it persists {@code stdout}/{@code stderr} as two
+ * independent buffers instead of a single combined execution log. The sandbox
+ * execution phase in between MUST NOT be wrapped in either transaction (potentially
+ * slow external I/O must never hold a DB connection from the pool) — that phase is
+ * orchestrated by {@code ExecuteRemediationService}.
  */
 @Service
 public class RemediationStateMachine {
@@ -65,9 +67,9 @@ public class RemediationStateMachine {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public RemediationAction commitClosure(RemediationAction executingAction, int exitCode,
-                                             String executionLog, OffsetDateTime executedAt) {
+                                             String stdoutLog, String stderrLog, OffsetDateTime executedAt) {
         RemediationStatus finalStatus = exitCode == 0 ? RemediationStatus.SUCCESS : RemediationStatus.FAILED;
-        RemediationAction closed = executingAction.closeWith(finalStatus, executionLog, executedAt);
+        RemediationAction closed = executingAction.closeWith(finalStatus, stdoutLog, stderrLog, executedAt);
         RemediationAction updated = remediationActionRepository.update(closed);
 
         if (finalStatus == RemediationStatus.SUCCESS) {

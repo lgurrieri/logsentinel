@@ -45,7 +45,8 @@ public class RemediationController {
                 action.getGeneratedScript(),
                 action.getExecutionStatus(),
                 action.getExecutedAt(),
-                action.getExecutionLog()
+                action.getStdoutLog(),
+                action.getStderrLog()
         );
     }
 }

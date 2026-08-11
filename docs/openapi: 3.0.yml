@@ -208,9 +208,20 @@ components:
         executedAt:
           type: string
           format: date-time
-        executionLog:
+        # Since LOG-US4-BE-02B (decisión aprobada 2026-08-11): stdout/stderr se
+        # capturan y persisten como buffers independientes, en lugar de un
+        # executionLog combinado, para que LOG-US4-FE-03 pueda renderizar cada
+        # stream sin heurísticas de texto.
+        stdoutLog:
           type: string
-          example: "PLAY [kill-idle-conns] ********************\nchanged: [db-master]\nSUCCESS"
+          nullable: true
+          description: "Standard output captured independently from stderr during the sandboxed script execution. Null while executionStatus is EXECUTING."
+          example: "PLAY [kill-idle-conns] ********************\nchanged: [db-master]\nok=1 changed=1 unreachable=0 failed=0"
+        stderrLog:
+          type: string
+          nullable: true
+          description: "Standard error captured independently from stdout during the sandboxed script execution. Null while executionStatus is EXECUTING."
+          example: ""
 
     IncidentDetail:
       allOf:

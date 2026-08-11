@@ -14,6 +14,12 @@ import java.util.UUID;
  * {@link RemediationStatus#EXECUTING} and commits immediately, before the sandboxed
  * script even starts running. Transaction B later persists the closure produced by
  * {@link #closeWith}, once the isolated execution concludes.
+ * <p>
+ * Since LOG-US4-BE-02B, the closure carries {@code stdout} and {@code stderr} as
+ * two independent buffers instead of a single combined {@code executionLog} — this
+ * mirrors {@link SandboxExecutionResult}, whose {@code stdout}/{@code stderr}
+ * fields flow straight through {@code RemediationStateMachine.commitClosure} into
+ * this entity.
  */
 public class RemediationAction {
 
@@ -21,29 +27,31 @@ public class RemediationAction {
     private final UUID incidentId;
     private final String generatedScript;
     private final RemediationStatus executionStatus;
-    private final String executionLog;
+    private final String stdoutLog;
+    private final String stderrLog;
     private final OffsetDateTime executedAt;
     private final OffsetDateTime createdAt;
 
     public RemediationAction(UUID id, UUID incidentId, String generatedScript, RemediationStatus executionStatus,
-                              String executionLog, OffsetDateTime executedAt, OffsetDateTime createdAt) {
+                              String stdoutLog, String stderrLog, OffsetDateTime executedAt, OffsetDateTime createdAt) {
         this.id = id;
         this.incidentId = incidentId;
         this.generatedScript = generatedScript;
         this.executionStatus = executionStatus;
-        this.executionLog = executionLog;
+        this.stdoutLog = stdoutLog;
+        this.stderrLog = stderrLog;
         this.executedAt = executedAt;
         this.createdAt = createdAt;
     }
 
     /**
      * Factory method for a remediation action about to enter Transaction A: always
-     * {@link RemediationStatus#EXECUTING}, with no execution log or executedAt yet.
+     * {@link RemediationStatus#EXECUTING}, with no stdout/stderr log or executedAt yet.
      * ID and createdAt are deferred to the persistence layer.
      */
     public static RemediationAction startExecuting(UUID incidentId, String generatedScript) {
         return new RemediationAction(null, incidentId, generatedScript, RemediationStatus.EXECUTING,
-                null, null, null);
+                null, null, null, null);
     }
 
     /**
@@ -51,8 +59,10 @@ public class RemediationAction {
      * once the isolated sandbox execution has concluded. Never mutates {@code this} —
      * domain objects in this codebase are immutable by convention.
      */
-    public RemediationAction closeWith(RemediationStatus finalStatus, String executionLog, OffsetDateTime executedAt) {
-        return new RemediationAction(id, incidentId, generatedScript, finalStatus, executionLog, executedAt, createdAt);
+    public RemediationAction closeWith(RemediationStatus finalStatus, String stdoutLog, String stderrLog,
+                                        OffsetDateTime executedAt) {
+        return new RemediationAction(id, incidentId, generatedScript, finalStatus, stdoutLog, stderrLog,
+                executedAt, createdAt);
     }
 
     public UUID getId() {
@@ -71,8 +81,12 @@ public class RemediationAction {
         return executionStatus;
     }
 
-    public String getExecutionLog() {
-        return executionLog;
+    public String getStdoutLog() {
+        return stdoutLog;
+    }
+
+    public String getStderrLog() {
+        return stderrLog;
     }
 
     public OffsetDateTime getExecutedAt() {

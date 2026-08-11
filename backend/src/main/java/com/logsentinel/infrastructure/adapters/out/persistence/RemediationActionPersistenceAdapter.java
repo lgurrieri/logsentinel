@@ -34,7 +34,8 @@ public class RemediationActionPersistenceAdapter implements RemediationActionRep
                 action.getIncidentId(),
                 action.getGeneratedScript(),
                 action.getExecutionStatus().name(),
-                action.getExecutionLog(),
+                action.getStdoutLog(),
+                action.getStderrLog(),
                 action.getExecutedAt(),
                 action.getCreatedAt()
         );
@@ -46,7 +47,8 @@ public class RemediationActionPersistenceAdapter implements RemediationActionRep
                 entity.getIncidentId(),
                 entity.getGeneratedScript(),
                 RemediationStatus.valueOf(entity.getExecutionStatus()),
-                entity.getExecutionLog(),
+                entity.getStdoutLog(),
+                entity.getStderrLog(),
                 entity.getExecutedAt(),
                 entity.getCreatedAt()
         );

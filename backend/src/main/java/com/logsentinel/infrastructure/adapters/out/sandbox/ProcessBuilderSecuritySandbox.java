@@ -8,10 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
@@ -34,6 +31,13 @@ import java.util.stream.Collectors;
  *         thread forcibly destroys the subprocess ({@code destroyForcibly()})
  *         if it exceeds the caller-supplied timeout.</li>
  * </ol>
+ * Since LOG-US4-BE-02B, {@code stdout} ({@code process.getInputStream()}) and
+ * {@code stderr} ({@code process.getErrorStream()}) are captured into two
+ * independent buffers via {@link StreamGobbler}, each drained on its own
+ * background thread — {@code redirectErrorStream(true)} is deliberately NOT
+ * used anymore, so downstream consumers (persistence, API, frontend) can tell
+ * the two channels apart without unreliable text heuristics.
+ * <p>
  * Nothing in this codebase currently wires this component to a real
  * remediation flow — persisting an execution as an audit record is the
  * responsibility of the future two-phase transactional flow (LOG-US4-BE-02).
@@ -79,8 +83,14 @@ public class ProcessBuilderSecuritySandbox implements SecuritySandbox {
         SandboxWatchdog watchdog = new SandboxWatchdog(process, timeout, unit);
         watchdog.start();
 
-        String output = readCombinedOutput(process);
+        StreamGobbler stdoutGobbler = new StreamGobbler(process.getInputStream());
+        StreamGobbler stderrGobbler = new StreamGobbler(process.getErrorStream());
+        stdoutGobbler.start();
+        stderrGobbler.start();
+
         watchdog.awaitCompletion();
+        String stdout = stdoutGobbler.awaitResult();
+        String stderr = stderrGobbler.awaitResult();
 
         int exitCode = process.exitValue();
         boolean timedOut = watchdog.timedOut();
@@ -90,7 +100,7 @@ public class ProcessBuilderSecuritySandbox implements SecuritySandbox {
                 "timedOut", timedOut
         ));
 
-        return new SandboxExecutionResult(exitCode, output, timedOut);
+        return new SandboxExecutionResult(exitCode, stdout, stderr, timedOut);
     }
 
     private void assertRunningAsRestrictedUser() {
@@ -109,25 +119,12 @@ public class ProcessBuilderSecuritySandbox implements SecuritySandbox {
     private Process start(String script) {
         try {
             ProcessBuilder processBuilder = new ProcessBuilder(shellExecutable, "-c", script);
-            processBuilder.redirectErrorStream(true);
+            // Deliberately NOT calling redirectErrorStream(true) (LOG-US4-BE-02B):
+            // stdout and stderr are captured into independent buffers below.
             return processBuilder.start();
         } catch (IOException e) {
             log.error("Sandbox failed to start isolated subprocess", Map.of("cause", String.valueOf(e.getMessage())));
             throw new SandboxSecurityException("Sandbox could not start the isolated subprocess", e);
         }
-    }
-
-    private String readCombinedOutput(Process process) {
-        StringBuilder combined = new StringBuilder();
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(process.getInputStream(), StandardCharsets.UTF_8))) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                combined.append(line).append(System.lineSeparator());
-            }
-        } catch (IOException e) {
-            log.error("Sandbox failed to read subprocess output", Map.of("cause", String.valueOf(e.getMessage())));
-        }
-        return combined.toString();
     }
 }

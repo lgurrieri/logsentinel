@@ -23,25 +23,30 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  * business flow wired to this component yet (that is LOG-US4-BE-02). Every
  * command below is a harmless, generic OS command used solely to prove the
  * sandbox's own isolation mechanics (Allowlist, Watchdog, restricted user guard).
+ * <p>
+ * Since LOG-US4-BE-02B, {@code stdout} and {@code stderr} are captured into
+ * independent buffers (no {@code redirectErrorStream(true)}) — several tests below
+ * assert on each buffer separately instead of a single combined {@code output}.
  */
 class ProcessBuilderSecuritySandboxTest {
 
     private static final String CURRENT_JVM_USER = System.getProperty("user.name");
 
     @Test
-    @DisplayName("should execute an allowed command and capture its combined output with exit code 0")
+    @DisplayName("should execute an allowed command and capture its stdout independently with exit code 0")
     void should_execute_allowed_command_and_capture_output() {
         var sandbox = new ProcessBuilderSecuritySandbox("echo", CURRENT_JVM_USER, "bash");
 
         SandboxExecutionResult result = sandbox.executeInIsolation("echo hello-sandbox", 5, TimeUnit.SECONDS);
 
         assertThat(result.exitCode()).isZero();
-        assertThat(result.output()).contains("hello-sandbox");
+        assertThat(result.stdout()).contains("hello-sandbox");
+        assertThat(result.stderr()).isBlank();
         assertThat(result.timedOut()).isFalse();
     }
 
     @Test
-    @DisplayName("should capture stderr merged with stdout and report a non-zero exit code when the command fails")
+    @DisplayName("should capture stderr separately from stdout and report a non-zero exit code when the command fails")
     void should_capture_stderr_and_nonzero_exit_code_on_failure() {
         var sandbox = new ProcessBuilderSecuritySandbox("ls", CURRENT_JVM_USER, "bash");
 
@@ -49,8 +54,23 @@ class ProcessBuilderSecuritySandboxTest {
                 "ls /this-path-should-not-exist-on-any-machine", 5, TimeUnit.SECONDS);
 
         assertThat(result.exitCode()).isNotZero();
-        assertThat(result.output()).isNotBlank();
+        assertThat(result.stdout()).isBlank();
+        assertThat(result.stderr()).isNotBlank();
         assertThat(result.timedOut()).isFalse();
+    }
+
+    @Test
+    @DisplayName("should capture stdout and stderr in independent buffers when a single command writes to both (LOG-US4-BE-02B)")
+    void should_capture_stdout_and_stderr_independently_when_command_writes_to_both() {
+        var sandbox = new ProcessBuilderSecuritySandbox("ls", CURRENT_JVM_USER, "bash");
+
+        SandboxExecutionResult result = sandbox.executeInIsolation(
+                "ls / /this-path-should-not-exist-on-any-machine", 5, TimeUnit.SECONDS);
+
+        assertThat(result.exitCode()).isNotZero();
+        assertThat(result.stdout()).isNotBlank();
+        assertThat(result.stderr()).isNotBlank();
+        assertThat(result.stderr()).doesNotContain(result.stdout().strip());
     }
 
     @Test
