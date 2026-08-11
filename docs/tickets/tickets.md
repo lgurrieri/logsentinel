@@ -245,6 +245,19 @@
 
 
 
+#### `LOG-US4-BE-02B`: Captura Diferenciada de stdout/stderr en el Registro de Auditoría
+
+* **Descripción:** Extender `SecuritySandbox` (`LOG-US4-BE-01`) y la persistencia de `RemediationAction` (`LOG-US4-BE-02`) para capturar y exponer los buffers de `stdout` y `stderr` por separado, en vez de un único `executionLog` combinado, de modo que el frontend (`LOG-US4-FE-03`) pueda diferenciar visualmente ambos flujos sin recurrir a heurísticas de texto poco confiables sobre un string combinado. Decisión de diseño (aprobada 2026-08-11, resolución de `CONTRACT_GATE: DRIFT_DETECTED` detectado al planificar `LOG-US4-FE-03`): alinear el contrato al ticket.
+* **Criterios de Aceptación Técnicos:**
+* Extender `SandboxExecutionResult` (resultado de `SecuritySandbox.executeInIsolation`) para exponer `stdout` y `stderr` como campos independientes. Implementación: capturar `process.getInputStream()` y `process.getErrorStream()` por separado (sin `redirectErrorStream(true)`), en vez de combinarlos en un único `output`.
+* Reemplazar la columna `execution_log` de `remediation_actions` por `stdout_log` (`TEXT`, nullable) y `stderr_log` (`TEXT`, nullable) vía migración Flyway (próxima versión disponible). No se mantiene un campo combinado de compatibilidad — ningún consumidor externo depende todavía de la forma actual (el frontend de `LOG-US4-FE-03` recién se va a implementar).
+* Extender el dominio `RemediationAction`, `RemediationActionJpaEntity`, `RemediationActionPersistenceAdapter` y el DTO `RemediationActionResponse` para reemplazar `executionLog` por `stdoutLog`/`stderrLog`.
+* Actualizar el contrato OpenAPI (`RemediationAction` schema): quitar `executionLog`, agregar `stdoutLog`/`stderrLog` (string, nullable), documentando el propósito de cada uno.
+* Actualizar todos los tests existentes que referencian `executionLog` (`RemediationStateMachineTest`, `RemediationStateMachineIntegrationTest`, `RemediationActionPersistenceAdapterIntegrationTest`, `RemediationControllerTest`, `RemediationActionsTableIntegrationTest`) sin dejar ningún test roto.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR) para cada pieza nueva.
+
+
+
 #### `LOG-US4-TEST-03`: Automatización contra Matriz de 5 Vectores de Inyección Bash
 
 * **Descripción:** Blindar el sistema contra atacantes que manipulen los scripts automatizando pruebas de penetración a nivel de código.
@@ -274,6 +287,7 @@
 * **Formateo de Consola Defensivo:** El contenido mapeado dentro de la Terminal de Salida debe diferenciar drásticamente el tipo de buffer recibido:
 * Las líneas capturadas desde la salida estándar estándar del backend (`stdout`) se renderizarán en tipografía gris claro o blanca ordinaria.
 * Las líneas procedentes de la salida de error del sistema operativo (`stderr`) se interceptarán y pintarán al vuelo en un **color rojo brillante de alerta (`#ff3333`) antepuestas por la etiqueta rígida `[ERROR]**`, garantizando que el operador identifique fallos en el script de manera visual e inmediata.
+* **Nota (resolución de drift de contrato, 2026-08-11):** `RemediationAction` expone `stdoutLog`/`stderrLog` como campos independientes (`LOG-US4-BE-02B`), no un `executionLog` combinado — el frontend debe consumir ambos campos por separado, sin heurísticas de parseo de texto sobre un string único. Depende de `LOG-US4-BE-02B` — no puede cerrarse antes.
 
 
 * Al finalizar, el frontend cambiará `executionStatus` a `'EXECUTION_SUCCESS'` o `'EXECUTION_FAILED'` basándose en el código de salida HTTP o el código numérico de salida de proceso (`exitCode: 0` para éxito, mayor a 0 para error), liberando la UI y pintando un indicador visual definitivo de conclusión.

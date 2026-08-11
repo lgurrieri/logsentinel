@@ -67,8 +67,33 @@ PASO 2.5).
 | LOG-US4-BE-01 | logsentinel-backend-implementer | completed | 1 | cdf2daa | humano | 2026-08-11 |
 | LOG-US4-BE-02 | logsentinel-backend-implementer | completed | 2 | a52d465 | humano | 2026-08-11 |
 | LOG-US4-TEST-03 | logsentinel-backend-implementer | completed | 1 | b68e9bc | humano | 2026-08-11 |
-| LOG-US4-FE-03 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
+| LOG-US4-BE-02B | logsentinel-backend-implementer | pending | 0 | — | — | — |
+| LOG-US4-FE-03 | logsentinel-frontend-implementer | pending (bloqueado por LOG-US4-BE-02B) | 0 | — | — | — |
 | LOG-US4-E2E-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
+
+## RESUELTO (2026-08-11): CONTRACT_GATE: DRIFT_DETECTED de LOG-US4-FE-03 (stdout/stderr)
+
+Al planificar el dispatch de `LOG-US4-FE-03`, detección proactiva (grep de `executionLog`
+en el backend, antes de dispatchar el ticket) de un segundo drift genuino: el ticket exige
+diferenciar visualmente líneas `stdout` (gris) de `stderr` (rojo, prefijo `[ERROR]`), pero
+`RemediationAction.executionLog` (contrato + `RemediationActionJpaEntity`) es un único
+string combinado — no existe la separación de buffers que el ticket da por sentada.
+
+**Decisión humana: "Alinear el contrato al ticket (nuevo ticket)"** — mismo patrón que la
+resolución de `LOG-US3-DB-02B`/`LOG-US4-BE-02`. Ticket nuevo creado: `LOG-US4-BE-02B`
+("Captura Diferenciada de stdout/stderr en el Registro de Auditoría"), encapsulando el
+refactor sobre `LOG-US4-BE-01`/`LOG-US4-BE-02` (ambos ya completados/commiteados) en vez
+de editarlos silenciosamente. Texto completo en `docs/tickets/tickets.md`. `LOG-US4-FE-03`
+enmendado (no ticket nuevo) con nota de dependencia: consumirá `stdoutLog`/`stderrLog` en
+vez de `executionLog`.
+
+Orden de ejecución obligatorio: `LOG-US4-BE-02B` debe completarse (commiteado) antes de
+reanudar el dispatch de `LOG-US4-FE-03`.
+
+Pendiente de aplicar tras el checkpoint de `LOG-US4-BE-02B` (fuera del scope `backend/`
+del subagente, lo aplica el orquestador): diff en `docs/openapi: 3.0.yml` — quitar
+`executionLog` del schema `RemediationAction`, agregar `stdoutLog`/`stderrLog` (string,
+nullable).
 
 ## RESUELTO (2026-08-11): CONTRACT_GATE: DRIFT_DETECTED de LOG-US4-BE-02
 
