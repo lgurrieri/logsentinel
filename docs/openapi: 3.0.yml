@@ -112,6 +112,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RemediationAction'
+        '409':
+          description: >
+            No existe un diagnóstico persistido para el incidente, o la IA no generó
+            un bloque de código parseable (`IncidentDiagnostic.suggestedScript` es
+            `null`). No se crea ningún registro en `remediation_actions`.
 
 components:
   schemas:
@@ -193,14 +198,12 @@ components:
         generatedScript:
           type: string
           example: "#!/bin/bash\nansible-playbook -i production kill-idle-conns.yml"
-        # KNOWN ISSUE (documental, sin resolver): falta el estado intermedio `EXECUTING`
-        # que LOG-US4-BE-02 commitea de inmediato (Propagation.REQUIRES_NEW) antes del
-        # cierre transaccional, y no existe todavía un endpoint de consulta/streaming del
-        # estado de auditoría en progreso que LOG-US4-FE-03 requiere (polling/SSE).
-        # Resolver al implementar LOG-US4-BE-02 / LOG-US4-FE-03.
+        # KNOWN ISSUE (documental, sin resolver): no existe todavía un endpoint de
+        # consulta/streaming del estado de auditoría en progreso que LOG-US4-FE-03
+        # requiere (polling/SSE). Resolver al implementar LOG-US4-FE-03.
         executionStatus:
           type: string
-          enum: [SUCCESS, FAILED, DRY_RUN]
+          enum: [SUCCESS, FAILED, DRY_RUN, EXECUTING]
           example: "SUCCESS"
         executedAt:
           type: string

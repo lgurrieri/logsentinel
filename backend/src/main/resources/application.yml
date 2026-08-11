@@ -73,6 +73,9 @@ logsentinel:
     executor-user: appuser
     # Shell usado para invocar el script aislado (`{shell} -c "{script}"`).
     shell: bash
+    # Tiempo máximo (segundos) que ExecuteRemediationService espera al subproceso
+    # aislado antes de que el Watchdog del sandbox lo termine (LOG-US4-BE-02).
+    execution-timeout-seconds: 30
 
 # --- Actuator: Endpoints de salud y métricas ---
 management:

@@ -12,6 +12,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.Optional;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -87,5 +90,30 @@ class IncidentDiagnosticPersistenceAdapterIntegrationTest {
                 IncidentDiagnostic.createNew(incident.getId(), "Root cause: minor blip, no remediation needed.", null));
 
         assertThat(saved.getSuggestedScript()).isNull();
+    }
+
+    @Test
+    @DisplayName("should find the persisted diagnostic by incidentId (LOG-US4-BE-02 — resolving the remediation script)")
+    void should_find_diagnostic_by_incident_id() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-find-by-incident-id", Urgency.CRITICAL, "ERROR: pool exhausted"));
+        incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(),
+                        "Root cause: connection pool exhaustion.\n```bash\nsystemctl restart payment-gw\n```",
+                        "systemctl restart payment-gw"));
+
+        Optional<IncidentDiagnostic> found = incidentDiagnosticPersistenceAdapter.findByIncidentId(incident.getId());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getIncidentId()).isEqualTo(incident.getId());
+        assertThat(found.get().getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
+    }
+
+    @Test
+    @DisplayName("should return empty when no diagnostic was ever persisted for the incident (LOG-US4-BE-02)")
+    void should_return_empty_when_no_diagnostic_persisted() {
+        Optional<IncidentDiagnostic> found = incidentDiagnosticPersistenceAdapter.findByIncidentId(UUID.randomUUID());
+
+        assertThat(found).isEmpty();
     }
 }

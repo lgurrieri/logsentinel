@@ -34,6 +34,11 @@ public class IncidentPersistenceAdapter implements IncidentRepository {
         return jpaRepository.findById(id).map(this::toDomain);
     }
 
+    @Override
+    public void updateStatus(UUID id, IncidentStatus status) {
+        jpaRepository.updateStatus(id, status.name());
+    }
+
     private IncidentJpaEntity toJpaEntity(Incident incident) {
         return new IncidentJpaEntity(
                 incident.getSystemName(),
