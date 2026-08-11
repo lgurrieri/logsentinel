@@ -1,5 +1,6 @@
 package com.logsentinel.infrastructure.adapters.in.web;
 
+import com.logsentinel.domain.exception.IncidentNotFoundException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -66,6 +67,27 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.badRequest().body(body);
+    }
+
+    /**
+     * Handles a lookup for an incident that does not exist. Also covers the SSE
+     * diagnostic stream (LOG-US3-BE-01): when the incident is not found, the async
+     * worker never writes any data before failing, so {@code SseEmitter.completeWithError}
+     * re-dispatches the request through Spring's normal MVC exception handling
+     * (no bytes committed yet), landing here with a clean HTTP 404 instead of a 500.
+     * Returns HTTP 404 without exposing internal details.
+     */
+    @ExceptionHandler(IncidentNotFoundException.class)
+    public ResponseEntity<Map<String, Object>> handleIncidentNotFound(IncidentNotFoundException ex) {
+
+        Map<String, Object> body = Map.of(
+                "timestamp", OffsetDateTime.now().toString(),
+                "status", HttpStatus.NOT_FOUND.value(),
+                "error", "Not Found",
+                "message", "Incident not found"
+        );
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
     }
 
     /**

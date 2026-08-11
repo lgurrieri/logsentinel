@@ -6,6 +6,9 @@ import com.logsentinel.domain.model.IncidentStatus;
 import com.logsentinel.domain.model.Urgency;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+import java.util.UUID;
+
 /**
  * Persistence adapter implementing the IncidentRepository port.
  * Maps between domain model and JPA entity.
@@ -24,6 +27,11 @@ public class IncidentPersistenceAdapter implements IncidentRepository {
         IncidentJpaEntity entity = toJpaEntity(incident);
         IncidentJpaEntity saved = jpaRepository.save(entity);
         return toDomain(saved);
+    }
+
+    @Override
+    public Optional<Incident> findById(UUID id) {
+        return jpaRepository.findById(id).map(this::toDomain);
     }
 
     private IncidentJpaEntity toJpaEntity(Incident incident) {

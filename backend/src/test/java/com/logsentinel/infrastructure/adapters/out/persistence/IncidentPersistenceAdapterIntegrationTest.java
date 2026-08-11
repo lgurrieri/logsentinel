@@ -11,6 +11,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.Optional;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -41,5 +44,28 @@ class IncidentPersistenceAdapterIntegrationTest {
         assertThat(saved.getCreatedAt())
                 .as("created_at must be read back from the DB-generated default after save()")
                 .isNotNull();
+    }
+
+    @Test
+    @DisplayName("should find a previously persisted incident by id (LOG-US3-BE-01)")
+    void should_find_incident_by_id_when_it_exists() {
+        var incident = Incident.createNew("persistence-adapter-findbyid-test-system", Urgency.HIGH,
+                "FATAL: authentication service unreachable");
+        Incident saved = incidentPersistenceAdapter.save(incident);
+
+        Optional<Incident> found = incidentPersistenceAdapter.findById(saved.getId());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getId()).isEqualTo(saved.getId());
+        assertThat(found.get().getSystemName()).isEqualTo("persistence-adapter-findbyid-test-system");
+        assertThat(found.get().getStatus()).isEqualTo(IncidentStatus.OPEN);
+    }
+
+    @Test
+    @DisplayName("should return empty when no incident exists for the given id")
+    void should_return_empty_when_incident_does_not_exist() {
+        Optional<Incident> found = incidentPersistenceAdapter.findById(UUID.randomUUID());
+
+        assertThat(found).isEmpty();
     }
 }
