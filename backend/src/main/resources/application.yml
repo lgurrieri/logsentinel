@@ -56,6 +56,32 @@ spring:
         queue-capacity: 100
       thread-name-prefix: logsentinel-async-
 
+  # --- MVC Async: timeout del request asíncrono subyacente al SseEmitter (LOG-US3-BE-04) ---
+  # Sin este valor explícito, Spring MVC aplica su default implícito de 30s: en producción
+  # (Azure VM sin GPU) Ollama supera holgadamente ese tiempo para generar un diagnóstico
+  # completo, y Spring abortaba el request con AsyncRequestTimeoutException antes de que
+  # StreamDiagnosticService llegara a persistir el diagnóstico consolidado. 180000ms (3 min)
+  # cubre el peor caso observado en producción con margen. DiagnosticStreamController
+  # inyecta este mismo valor (vía @Value) como timeout del SseEmitter, para que ambos
+  # nunca diverjan entre sí.
+  mvc:
+    async:
+      request-timeout: 180000
+
+  # --- Cliente HTTP compartido (RestClient/WebClient) usado por Spring AI para hablar con
+  #     Ollama (LOG-US3-BE-04). Spring AI no expone una propiedad de timeout propia para
+  #     Ollama: OllamaApi obtiene sus clientes HTTP vía los builders autoconfigurados por
+  #     Spring Boot (RestClient.Builder para el chat() bloqueante, WebClient.Builder para
+  #     el streamingChat() reactivo), que a su vez consumen estos valores unificados
+  #     (spring.http.clients.*, Spring Boot 4.1). Se alinean al mismo timeout que
+  #     spring.mvc.async.request-timeout para no introducir un corte prematuro distinto;
+  #     aunque el read-timeout del conector reactivo pudiera interpretarse como tiempo-al-
+  #     primer-byte en vez de duración total del stream, se opta por el valor conservador.
+  http:
+    clients:
+      connect-timeout: 5s
+      read-timeout: 180s
+
 # --- LogSentinel: configuración propia de la aplicación ---
 logsentinel:
   rag:

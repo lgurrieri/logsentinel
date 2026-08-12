@@ -31,6 +31,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
+import static org.mockito.BDDMockito.willDoNothing;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -229,5 +230,61 @@ class StreamDiagnosticServiceTest {
         streamDiagnosticService.execute(incidentId, listener);
 
         verify(listener).onComplete(null);
+    }
+
+    @Test
+    @DisplayName("should still persist the full consolidated diagnostic and suggestedScript when the listener "
+            + "starts throwing mid-stream, simulating a dead SSE emitter after an AsyncRequestTimeoutException "
+            + "or client disconnect (LOG-US3-BE-04)")
+    void should_persist_diagnostic_when_listener_disconnects_mid_stream() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: connection pool exhausted", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs())).willReturn(List.of());
+        willAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(2);
+            onChunk.accept("Root cause: pool exhaustion.\n```bash\n");
+            onChunk.accept("systemctl restart payment-gw\n");
+            onChunk.accept("```\n");
+            return null;
+        }).given(diagnosticChatPort).streamDiagnosis(anyString(), anyString(), any());
+        // The 1st onChunk call succeeds (client still connected); every call from the
+        // 2nd onward throws, simulating the SseEmitter already having timed out/closed.
+        willDoNothing().willThrow(new IllegalStateException("ResponseBodyEmitter has already completed"))
+                .given(listener).onChunk(anyString());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        ArgumentCaptor<IncidentDiagnostic> diagnosticCaptor = ArgumentCaptor.forClass(IncidentDiagnostic.class);
+        verify(incidentDiagnosticRepository).save(diagnosticCaptor.capture());
+        assertThat(diagnosticCaptor.getValue().getDiagnosticText())
+                .isEqualTo("Root cause: pool exhaustion.\n```bash\nsystemctl restart payment-gw\n```\n");
+        assertThat(diagnosticCaptor.getValue().getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
+        verify(listener).onComplete(null);
+    }
+
+    @Test
+    @DisplayName("should stop attempting to forward chunks to a listener once it has failed once, to avoid "
+            + "retrying a connection already known to be dead (LOG-US3-BE-04)")
+    void should_stop_forwarding_chunks_after_listener_first_fails() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: connection pool exhausted", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs())).willReturn(List.of());
+        willAnswer(invocation -> {
+            Consumer<String> onChunk = invocation.getArgument(2);
+            onChunk.accept("chunk-1");
+            onChunk.accept("chunk-2");
+            onChunk.accept("chunk-3");
+            return null;
+        }).given(diagnosticChatPort).streamDiagnosis(anyString(), anyString(), any());
+        willDoNothing().willThrow(new IllegalStateException("dead emitter"))
+                .given(listener).onChunk(anyString());
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        verify(listener, org.mockito.Mockito.times(2)).onChunk(anyString());
     }
 }

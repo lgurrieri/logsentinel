@@ -258,12 +258,31 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   `cd.yml` no puede completar el despliegue automático (el paso "Configure SSH" vuelve
   a fallar contra la NSG restringida) — el pipeline queda efectivamente bloqueado hasta
   resolver este ítem.
-* **Sugerencia de resolución (en implementación):** migrar el job `deploy` a autenticar
-  contra Azure vía OIDC federado (GitHub → Azure AD App Registration con Federated
-  Identity Credential, sin secret de larga vida) y ejecutar los pasos con
+* **Resolución:** migrado el job `deploy` a autenticar contra Azure vía OIDC federado
+  (GitHub → Azure AD App Registration `logsentinel-cd-oidc` con Federated Identity
+  Credential, sin secret de larga vida) y ejecutar los pasos con
   `az vm run-command invoke` en vez de SSH/SCP directo — la NSG permanece restringida a
-  la IP fija sin bloquear el pipeline, porque el control plane de Azure (no la red de la
-  VM) es el canal de ejecución.
-* **Estado:** Convertido a ticket (implementación OIDC + `az vm run-command` en curso,
-  ver `.github/workflows/cd.yml`)
+  `190.120.245.19/32` sin bloquear el pipeline, porque el control plane de Azure (no la
+  red de la VM) es el canal de ejecución. Ver `.github/workflows/cd.yml` (job `deploy`)
+  e `IaC/scripts/setup-oidc.sh`.
+* **Bugs encontrados y corregidos durante la verificación end-to-end:**
+  1. El script remoto se abortaba en silencio: `az vm run-command invoke` ejecuta el
+     script recibido por `sh` (dash en esta VM Ubuntu 24.04), que no soporta
+     `set -o pipefail` y aborta el script entero al toparse con esa opción inválida
+     (semántica POSIX de special builtins). Fix: shebang `#!/usr/bin/env bash` como
+     primera línea literal del heredoc, para que `run-command` re-ejecute bajo bash.
+  2. `az vm run-command invoke` reporta `ProvisioningState/succeeded` y exit code 0
+     **aunque el script que ejecuta falle** (verificado con un `exit 1` deliberado a
+     mitad de script) — la extensión solo confirma que pudo lanzar el script, no que
+     terminó bien. Fix: sentinel `echo "DEPLOY_OK"` como última línea del script remoto
+     + `grep` de ese sentinel en el step de Actions, que falla explícitamente
+     (`exit 1` + `::error::`) si no aparece.
+* **Verificación:** commit `0ac57bc`, CD run `31643808992` completó en verde. Confirmado
+  de forma independiente en la VM (no solo confiando en el verde de CI): `.env` con el
+  `BACKEND_IMAGE` actualizado al SHA correcto, los 4 servicios `up`/`healthy` en
+  `docker compose ps`, `/actuator/health` del backend con `status: UP`, y la URL pública
+  (`http://logsentinel-demo-53e60d.brazilsouth.cloudapp.azure.com/`) respondiendo
+  `401` sin credenciales (Basic Auth de Nginx activo y alcanzable desde Internet).
+* **Estado:** Cerrado
 * **Detectado:** 2026-08-12
+* **Cerrado:** 2026-08-12

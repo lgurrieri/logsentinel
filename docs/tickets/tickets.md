@@ -211,6 +211,20 @@
 
 
 
+#### `LOG-US3-BE-04`: Persistencia del Diagnóstico Resiliente a Timeout/Desconexión de la Conexión SSE
+
+* **Descripción:** Bug encontrado en el smoke test de producción (VM Azure, 2026-08-12): `StreamDiagnosticService.execute()` solo persiste el diagnóstico consolidado (`persistDiagnostic(...)`) dentro de un bloque `finally` que corre **después** de que el `ChatClient` termina de emitir todos los chunks. Como `spring.mvc.async.request-timeout` nunca se configuró explícitamente, aplica el default de Spring MVC (30s) — y en la VM de producción, Ollama tarda más que eso en generar el diagnóstico completo, por lo que Spring aborta la request async con `AsyncRequestTimeoutException` antes de llegar al `finally`. Resultado verificado en vivo: el frontend muestra "Diagnóstico completado" (por la heurística ya documentada en `DEBT-001`, que asume éxito si llegó al menos un chunk antes de `onerror`), pero `incident_diagnostics` queda con 0 filas para ese incidente y `GET /incidents/{id}` devuelve `analyses: []` — lo que además bloquea completamente `LOG-US4-FE-04`/`RemediationPanel`, porque `suggestedScript` nunca se persiste. Le mismo gap aplica si el cliente cierra la pestaña antes de que el LLM termine: la persistencia depende hoy de que la conexión HTTP del cliente siga viva hasta el final.
+* **Criterios de Aceptación Técnicos:**
+* Desacoplar la persistencia del diagnóstico del ciclo de vida de la conexión SSE del cliente: el consumo del stream de Ollama y el guardado en `incident_diagnostics` deben completarse en una tarea de servidor independiente del `SseEmitter`/request HTTP entrante, de modo que un `AsyncRequestTimeoutException`, un timeout del cliente, o el cierre anticipado de la pestaña **no** impidan la persistencia final del diagnóstico ni del `suggestedScript` derivado (`LOG-US3-DB-02B`).
+* Configurar explícitamente `spring.mvc.async.request-timeout` en `application.yml` a un valor acorde al peor caso observado de generación con Ollama en producción (no dejar el default implícito de 30s), documentando el valor elegido y por qué.
+* Revisar si `spring.ai.ollama.chat.client.*` necesita timeouts HTTP explícitos (conexión/lectura) acordes al mismo valor, en vez de depender de los defaults del cliente HTTP subyacente.
+* Test de integración (Testcontainers, patrón ya usado en `IncidentDiagnosticPersistenceAdapterIntegrationTest`) que reproduzca el escenario: la conexión/emitter del cliente se cierra o excede el timeout **antes** de que el LLM termine de emitir todos los chunks, y verifique que el diagnóstico y el `suggestedScript` igual terminan persistidos en `incident_diagnostics`.
+* No romper el comportamiento de streaming ya existente hacia clientes que sí permanecen conectados hasta el final (regresión cero sobre `LOG-US3-BE-01`/`LOG-US3-FE-03`).
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR): el test de integración de persistencia resiliente a desconexión debe escribirse y fallar primero, antes de tocar `StreamDiagnosticService`.
+* **Origen:** hallazgo de smoke test en producción, no gap de diseño preexistente — ver verificación completa en esta sesión (logs `AsyncRequestTimeoutException` en `StreamDiagnosticService`, `SELECT count(*) FROM incident_diagnostics` → 0 tras dos corridas completas del stream).
+
+
+
 ---
 
 ## ⚡ US4: Ejecución Segura de Scripts de Remediación y Auditoría
