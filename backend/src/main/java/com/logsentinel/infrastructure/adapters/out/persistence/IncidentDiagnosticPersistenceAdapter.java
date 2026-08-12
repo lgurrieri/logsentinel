@@ -4,6 +4,9 @@ import com.logsentinel.application.ports.out.IncidentDiagnosticRepository;
 import com.logsentinel.domain.model.IncidentDiagnostic;
 import org.springframework.stereotype.Component;
 
+import java.util.Optional;
+import java.util.UUID;
+
 /**
  * Persistence adapter implementing the IncidentDiagnosticRepository port (LOG-US3-DB-02).
  * Maps between the domain model and the JPA entity backing the 'incident_diagnostics'
@@ -21,8 +24,13 @@ public class IncidentDiagnosticPersistenceAdapter implements IncidentDiagnosticR
     @Override
     public IncidentDiagnostic save(IncidentDiagnostic diagnostic) {
         IncidentDiagnosticJpaEntity entity = new IncidentDiagnosticJpaEntity(
-                diagnostic.getIncidentId(), diagnostic.getDiagnosticText());
+                diagnostic.getIncidentId(), diagnostic.getDiagnosticText(), diagnostic.getSuggestedScript());
         IncidentDiagnosticJpaEntity saved = jpaRepository.save(entity);
         return saved.toDomain();
+    }
+
+    @Override
+    public Optional<IncidentDiagnostic> findByIncidentId(UUID incidentId) {
+        return jpaRepository.findByIncidentId(incidentId).map(IncidentDiagnosticJpaEntity::toDomain);
     }
 }

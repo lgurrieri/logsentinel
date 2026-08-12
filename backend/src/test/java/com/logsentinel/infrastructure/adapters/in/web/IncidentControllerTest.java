@@ -1,7 +1,11 @@
 package com.logsentinel.infrastructure.adapters.in.web;
 
 import com.logsentinel.application.ports.in.CreateIncidentUseCase;
+import com.logsentinel.application.ports.in.GetIncidentDetailUseCase;
+import com.logsentinel.application.ports.in.GetIncidentDetailUseCase.IncidentDetailResult;
+import com.logsentinel.domain.exception.IncidentNotFoundException;
 import com.logsentinel.domain.model.Incident;
+import com.logsentinel.domain.model.IncidentDiagnostic;
 import com.logsentinel.domain.model.IncidentStatus;
 import com.logsentinel.domain.model.Urgency;
 import org.junit.jupiter.api.BeforeEach;
@@ -15,10 +19,13 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
+import static org.hamcrest.Matchers.hasSize;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -35,9 +42,12 @@ class IncidentControllerTest {
     @Mock
     private CreateIncidentUseCase createIncidentUseCase;
 
+    @Mock
+    private GetIncidentDetailUseCase getIncidentDetailUseCase;
+
     @BeforeEach
     void setUp() {
-        IncidentController controller = new IncidentController(createIncidentUseCase);
+        IncidentController controller = new IncidentController(createIncidentUseCase, getIncidentDetailUseCase);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -195,5 +205,55 @@ class IncidentControllerTest {
                 .andExpect(jsonPath("$.message").value("An unexpected error occurred"))
                 .andExpect(jsonPath("$.stackTrace").doesNotExist())
                 .andExpect(jsonPath("$.trace").doesNotExist());
+    }
+
+    @Test
+    @DisplayName("should return 200 with the incident and its analyses when a diagnostic is associated (LOG-US4-BE-03)")
+    void should_return_200_with_analyses_when_diagnostic_exists() throws Exception {
+        UUID incidentId = UUID.randomUUID();
+        OffsetDateTime createdAt = OffsetDateTime.now();
+        Incident incident = new Incident(incidentId, "payment-gw", Urgency.CRITICAL,
+                "ERROR: pool exhausted", IncidentStatus.RESOLVED, createdAt);
+        IncidentDiagnostic diagnostic = new IncidentDiagnostic(UUID.randomUUID(), incidentId,
+                "Root cause: pool exhaustion.", "systemctl restart payment-gw", createdAt);
+        given(getIncidentDetailUseCase.execute(incidentId))
+                .willReturn(new IncidentDetailResult(incident, List.of(diagnostic)));
+
+        mockMvc.perform(get("/api/v1/incidents/{id}", incidentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(incidentId.toString()))
+                .andExpect(jsonPath("$.systemName").value("payment-gw"))
+                .andExpect(jsonPath("$.status").value("RESOLVED"))
+                .andExpect(jsonPath("$.analyses", hasSize(1)))
+                .andExpect(jsonPath("$.analyses[0].diagnosticOutput").value("Root cause: pool exhaustion."))
+                .andExpect(jsonPath("$.analyses[0].suggestedScript").value("systemctl restart payment-gw"))
+                .andExpect(jsonPath("$.analyses[0].rawLogSnapshot").value("ERROR: pool exhausted"));
+    }
+
+    @Test
+    @DisplayName("should return 200 with an empty analyses array when no diagnostic was ever persisted (LOG-US4-BE-03)")
+    void should_return_200_with_empty_analyses_when_no_diagnostic_exists() throws Exception {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "auth-svc", Urgency.HIGH,
+                "FATAL: token validation failed", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(getIncidentDetailUseCase.execute(incidentId))
+                .willReturn(new IncidentDetailResult(incident, List.of()));
+
+        mockMvc.perform(get("/api/v1/incidents/{id}", incidentId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(incidentId.toString()))
+                .andExpect(jsonPath("$.analyses", hasSize(0)));
+    }
+
+    @Test
+    @DisplayName("should return 404 when the incident does not exist (LOG-US4-BE-03)")
+    void should_return_404_when_incident_does_not_exist() throws Exception {
+        UUID incidentId = UUID.randomUUID();
+        given(getIncidentDetailUseCase.execute(incidentId))
+                .willThrow(new IncidentNotFoundException(incidentId));
+
+        mockMvc.perform(get("/api/v1/incidents/{id}", incidentId))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("Not Found"));
     }
 }

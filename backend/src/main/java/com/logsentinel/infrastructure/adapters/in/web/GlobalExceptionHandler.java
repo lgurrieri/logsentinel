@@ -1,6 +1,7 @@
 package com.logsentinel.infrastructure.adapters.in.web;
 
 import com.logsentinel.domain.exception.IncidentNotFoundException;
+import com.logsentinel.domain.exception.RemediationScriptUnavailableException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -88,6 +89,27 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(body);
+    }
+
+    /**
+     * Handles {@code POST /incidents/{id}/remediations} (LOG-US4-BE-02) when there is
+     * no script to execute for the incident: either no diagnostic was ever persisted
+     * for it, or its {@code suggestedScript} is {@code null} (LOG-US3-DB-02B, design
+     * decision Option B) — no {@code remediation_actions} row is created in either
+     * case. Returns HTTP 409 Conflict without exposing internal details.
+     */
+    @ExceptionHandler(RemediationScriptUnavailableException.class)
+    public ResponseEntity<Map<String, Object>> handleRemediationScriptUnavailable(
+            RemediationScriptUnavailableException ex) {
+
+        Map<String, Object> body = Map.of(
+                "timestamp", OffsetDateTime.now().toString(),
+                "status", HttpStatus.CONFLICT.value(),
+                "error", "Conflict",
+                "message", "No remediation script available for this incident"
+        );
+
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(body);
     }
 
     /**

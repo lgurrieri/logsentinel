@@ -1,0 +1,20 @@
+# Override de Docker Compose (`LOG-US4-E2E-04`, ronda 2 - bypass de Ollama en
+# contenedor). Usado exclusivamente por `frontend/e2e/global-setup.ts` cuando
+# detecta una instancia nativa de Ollama corriendo en el host
+# (`http://localhost:11434`, fuera de Docker) con los modelos ya descargados
+# -evita la descarga en frío de la imagen `ollama/ollama:latest` + los
+# modelos `llama3.1`/`nomic-embed-text` (~5GB) dentro de un contenedor.
+#
+# El servicio `ollama` de `docker-compose.yml` NO se toca ni se borra: sigue
+# disponible tal cual para quien no tenga Ollama nativo instalado. Este
+# archivo solo se combina vía `-f docker-compose.yml -f <este archivo>` junto
+# con `--no-deps db backend`, de modo que Compose nunca intente levantar el
+# servicio `ollama` en contenedor pese a que `backend` lo lista en
+# `depends_on`.
+#
+# `host.docker.internal` resuelve al host desde un contenedor en Docker
+# Desktop (macOS/Windows) sin configuración adicional.
+services:
+  backend:
+    environment:
+      SPRING_AI_OLLAMA_BASE_URL: http://host.docker.internal:11434

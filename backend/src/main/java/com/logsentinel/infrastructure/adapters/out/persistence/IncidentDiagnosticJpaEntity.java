@@ -37,6 +37,15 @@ public class IncidentDiagnosticJpaEntity {
     @Column(name = "diagnostic_text", nullable = false, columnDefinition = "TEXT")
     private String diagnosticText;
 
+    /**
+     * The remediation script derived authoritatively by the backend from
+     * {@code diagnosticText} (LOG-US3-DB-02B, design decision Option B). Nullable:
+     * {@code null} whenever the AI's diagnostic did not contain a parseable fenced
+     * code block (see {@code com.logsentinel.domain.service.SuggestedScriptExtractor}).
+     */
+    @Column(name = "suggested_script", columnDefinition = "TEXT")
+    private String suggestedScript;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
@@ -45,9 +54,10 @@ public class IncidentDiagnosticJpaEntity {
         // Required by JPA
     }
 
-    public IncidentDiagnosticJpaEntity(UUID incidentId, String diagnosticText) {
+    public IncidentDiagnosticJpaEntity(UUID incidentId, String diagnosticText, String suggestedScript) {
         this.incidentId = incidentId;
         this.diagnosticText = diagnosticText;
+        this.suggestedScript = suggestedScript;
     }
 
     public UUID getId() {
@@ -62,6 +72,10 @@ public class IncidentDiagnosticJpaEntity {
         return diagnosticText;
     }
 
+    public String getSuggestedScript() {
+        return suggestedScript;
+    }
+
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
@@ -72,7 +86,7 @@ public class IncidentDiagnosticJpaEntity {
      * (LOG-US3-DB-02).
      */
     public IncidentDiagnostic toDomain() {
-        return new IncidentDiagnostic(id, incidentId, diagnosticText, createdAt);
+        return new IncidentDiagnostic(id, incidentId, diagnosticText, suggestedScript, createdAt);
     }
 
     @Override

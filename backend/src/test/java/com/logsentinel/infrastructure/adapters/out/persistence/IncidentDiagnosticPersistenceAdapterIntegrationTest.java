@@ -12,6 +12,9 @@ import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.Optional;
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -41,7 +44,7 @@ class IncidentDiagnosticPersistenceAdapterIntegrationTest {
                 Incident.createNew("adapter-test-system", Urgency.CRITICAL, "ERROR: pool exhausted"));
 
         IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
-                IncidentDiagnostic.createNew(incident.getId(), "Root cause: connection pool exhaustion."));
+                IncidentDiagnostic.createNew(incident.getId(), "Root cause: connection pool exhaustion.", null));
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getIncidentId()).isEqualTo(incident.getId());
@@ -55,11 +58,62 @@ class IncidentDiagnosticPersistenceAdapterIntegrationTest {
         Incident incident = incidentPersistenceAdapter.save(
                 Incident.createNew("adapter-test-duplicate-system", Urgency.HIGH, "FATAL: auth unreachable"));
         incidentDiagnosticPersistenceAdapter.save(
-                IncidentDiagnostic.createNew(incident.getId(), "First diagnostic for this incident."));
+                IncidentDiagnostic.createNew(incident.getId(), "First diagnostic for this incident.", null));
 
         assertThatThrownBy(() ->
                 incidentDiagnosticPersistenceAdapter.save(
-                        IncidentDiagnostic.createNew(incident.getId(), "A conflicting second diagnostic."))
+                        IncidentDiagnostic.createNew(incident.getId(), "A conflicting second diagnostic.", null))
         ).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    @DisplayName("should round-trip a non-null suggestedScript through the adapter (LOG-US3-DB-02B)")
+    void should_round_trip_suggested_script() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-suggested-script", Urgency.CRITICAL, "ERROR: pool exhausted"));
+
+        IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(),
+                        "Root cause: connection pool exhaustion.\n```bash\nsystemctl restart payment-gw\n```",
+                        "systemctl restart payment-gw"));
+
+        assertThat(saved.getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
+    }
+
+    @Test
+    @DisplayName("should round-trip a null suggestedScript through the adapter (LOG-US3-DB-02B)")
+    void should_round_trip_null_suggested_script() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-null-suggested-script", Urgency.LOW, "WARN: minor blip"));
+
+        IncidentDiagnostic saved = incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(), "Root cause: minor blip, no remediation needed.", null));
+
+        assertThat(saved.getSuggestedScript()).isNull();
+    }
+
+    @Test
+    @DisplayName("should find the persisted diagnostic by incidentId (LOG-US4-BE-02 — resolving the remediation script)")
+    void should_find_diagnostic_by_incident_id() {
+        Incident incident = incidentPersistenceAdapter.save(
+                Incident.createNew("adapter-test-find-by-incident-id", Urgency.CRITICAL, "ERROR: pool exhausted"));
+        incidentDiagnosticPersistenceAdapter.save(
+                IncidentDiagnostic.createNew(incident.getId(),
+                        "Root cause: connection pool exhaustion.\n```bash\nsystemctl restart payment-gw\n```",
+                        "systemctl restart payment-gw"));
+
+        Optional<IncidentDiagnostic> found = incidentDiagnosticPersistenceAdapter.findByIncidentId(incident.getId());
+
+        assertThat(found).isPresent();
+        assertThat(found.get().getIncidentId()).isEqualTo(incident.getId());
+        assertThat(found.get().getSuggestedScript()).isEqualTo("systemctl restart payment-gw");
+    }
+
+    @Test
+    @DisplayName("should return empty when no diagnostic was ever persisted for the incident (LOG-US4-BE-02)")
+    void should_return_empty_when_no_diagnostic_persisted() {
+        Optional<IncidentDiagnostic> found = incidentDiagnosticPersistenceAdapter.findByIncidentId(UUID.randomUUID());
+
+        assertThat(found).isEmpty();
     }
 }

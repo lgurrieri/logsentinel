@@ -10,6 +10,7 @@ import com.logsentinel.domain.exception.IncidentNotFoundException;
 import com.logsentinel.domain.model.Incident;
 import com.logsentinel.domain.model.IncidentDiagnostic;
 import com.logsentinel.domain.model.RunbookChunk;
+import com.logsentinel.domain.service.SuggestedScriptExtractor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -42,6 +43,11 @@ import java.util.stream.Collectors;
  * {@code onComplete} is notified. A persistence failure is logged but never surfaces to
  * the listener — by that point the diagnostic has already been fully streamed to the
  * client, so failing the SSE channel after the fact would not undo already-sent bytes.
+ * <p>
+ * Before persisting, {@link SuggestedScriptExtractor} (LOG-US3-DB-02B) runs exactly
+ * once over the fully-consolidated diagnostic text — never fragment by fragment — to
+ * authoritatively derive {@code suggestedScript}, so a later remediation execution flow
+ * never depends on the client resending or re-parsing AI-generated code.
  */
 @Service
 public class StreamDiagnosticService implements StreamDiagnosticUseCase {
@@ -52,6 +58,7 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
     private final RunbookSearchPort runbookSearchPort;
     private final DiagnosticChatPort diagnosticChatPort;
     private final IncidentDiagnosticRepository incidentDiagnosticRepository;
+    private final SuggestedScriptExtractor suggestedScriptExtractor;
 
     public StreamDiagnosticService(IncidentRepository incidentRepository,
                                     RunbookSearchPort runbookSearchPort,
@@ -61,6 +68,7 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
         this.runbookSearchPort = runbookSearchPort;
         this.diagnosticChatPort = diagnosticChatPort;
         this.incidentDiagnosticRepository = incidentDiagnosticRepository;
+        this.suggestedScriptExtractor = new SuggestedScriptExtractor();
     }
 
     @Async
@@ -96,7 +104,9 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
 
     private void persistDiagnostic(UUID incidentId, String diagnosticText) {
         try {
-            incidentDiagnosticRepository.save(IncidentDiagnostic.createNew(incidentId, diagnosticText));
+            String suggestedScript = suggestedScriptExtractor.extract(diagnosticText);
+            incidentDiagnosticRepository.save(
+                    IncidentDiagnostic.createNew(incidentId, diagnosticText, suggestedScript));
         } catch (Exception e) {
             log.error("Failed to persist consolidated incident diagnostic", Map.of(
                     "incidentId", String.valueOf(incidentId),

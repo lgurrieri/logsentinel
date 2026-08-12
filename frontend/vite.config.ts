@@ -12,5 +12,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Excluye explícitamente `e2e/` (specs de Playwright, otro test runner)
+    // del descubrimiento de tests de Vitest.
+    include: ['src/**/*.{test,spec}.{ts,tsx}'],
   },
 });

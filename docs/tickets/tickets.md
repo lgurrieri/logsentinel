@@ -175,6 +175,21 @@
 
 
 
+#### `LOG-US3-DB-02B`: Captura Estructurada del Script de Remediación Sugerido
+
+* **Descripción:** Extender la persistencia del diagnóstico congelado (`LOG-US3-DB-02`) para capturar, en el mismo instante de la generación (cierre exitoso del stream SSE), el bloque de código de remediación sugerido por la IA como un campo estructurado independiente — en vez de que `LOG-US4-BE-02` dependa de que el cliente reenvíe el script o de parsearlo en el momento de la ejecución. Decisión de diseño (Opción B, aprobada 2026-08-11): el backend deriva y persiste el script de forma autoritativa al generar el diagnóstico; el cliente nunca provee código ejecutable en el flujo de remediación.
+* **Criterios de Aceptación Técnicos:**
+* Agregar la columna `suggested_script` (`TEXT`, nullable) a la tabla `incident_diagnostics` vía migración Flyway (próxima versión disponible; coordinar numeración con la migración pendiente de `LOG-US4-BE-02`, `V6__create_remediation_actions_table.sql`, si esta se commitea primero).
+* Extender el modelo de dominio `IncidentDiagnostic` (y su `IncidentDiagnosticJpaEntity` / `IncidentDiagnosticPersistenceAdapter`) con el campo `suggestedScript` (`String`, nullable).
+* Implementar un componente de dominio puro (ej. `SuggestedScriptExtractor`) que reciba el `diagnosticText` consolidado y extraiga el contenido del primer bloque de código Markdown delimitado por triple backtick (con o sin hint de lenguaje, ej. ` ```bash `, ` ```yaml `, ` ``` ` a secas). Si no existe ningún bloque de código, o el bloque no está correctamente cerrado, el resultado es `null` — no adivinar ni concatenar texto ambiguo.
+* Cobertura de tests unitarios obligatoria para el extractor cubriendo como mínimo: bloque con hint de lenguaje, bloque sin hint, múltiples bloques (documentar y testear la regla determinística elegida — se usa el primero), texto sin ningún bloque de código, y bloque sin cierre (backtick faltante).
+* Integrar el extractor en `StreamDiagnosticService.persistDiagnostic(...)` para poblar `suggestedScript` antes de guardar, sin alterar el comportamiento de streaming ya existente hacia el cliente (el parseo ocurre una sola vez sobre el texto ya consolidado, nunca fragmento a fragmento).
+* Actualizar el contrato OpenAPI: agregar `suggestedScript` (string, nullable) al schema `IncidentAnalysis`.
+* Actualizar los tests existentes que referencian el constructor/factory actual de 4 argumentos de `IncidentDiagnostic` (`StreamDiagnosticServiceTest`, `IncidentDiagnosticPersistenceAdapterIntegrationTest` con Testcontainers, y cualquier otro que rompa), sin dejar ningún test roto.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR) para cada pieza nueva — en particular el extractor, que debe nacer de un test que falle primero por cada caso límite listado arriba.
+
+
+
 #### `LOG-US3-FE-03`: Consola Terminal Interactiva en Frontend
 
 * **Descripción:** Desarrollar el componente visual de terminal interactiva encargado de conectarse al stream de datos, procesar Markdown al vuelo y asegurar un renderizado eficiente libre de parpadeos o saltos de pantalla (Layout Shift).
@@ -222,10 +237,24 @@
 
 * **Descripción:** Asegurar que el registro de auditoría de los scripts sea inmune a caídas catastróficas del hilo principal del backend.
 * **Criterios de Aceptación Técnicos:**
-* Crear la tabla `remediation_audits` para capturar metadatos, comandos y respuestas.
+* Crear la tabla `remediation_actions` para capturar metadatos, comandos y respuestas.
 * Diseñar la máquina de estados operando con transacciones independientes secuenciales configuradas mediante **`Propagation.REQUIRES_NEW`**.
 * **Flujo Transaccional:** 1. Transacción A (Commit Inmediato de estado `EXECUTING`) $\rightarrow$ 2. Fase de ejecución aislada libre en Sandbox $\rightarrow$ 3. Transacción B (Commit de Cierre con buffers finales de `stdout`/`stderr` en estado `SUCCESS` o `FAILED`).
-* **Nota (issue documental abierto):** el contrato OpenAPI (`RemediationAction.executionStatus`) todavía no incluye el estado intermedio `EXECUTING` ni un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE). Resolver al implementar este ticket.
+* **Nota (issue documental, parcialmente resuelto 2026-08-11):** el contrato OpenAPI (`RemediationAction.executionStatus`) ya incluye el estado intermedio `EXECUTING`. Sigue abierto: no existe todavía un endpoint de consulta/streaming del estado de auditoría en progreso que `LOG-US4-FE-03` requiere (polling/SSE) — resolver al implementar ese ticket.
+* **Resolución del drift de contrato (2026-08-11, Opción B):** `POST /incidents/{id}/remediations` no recibe `requestBody`. El controller obtiene `generatedScript` leyendo `IncidentDiagnostic.suggestedScript` (`LOG-US3-DB-02B`) del diagnóstico persistido asociado al incidente (relación uno a uno vía `incident_id`). Si no existe diagnóstico persistido para el incidente, o `suggestedScript` es `null` (la IA no generó un bloque de código parseable), el endpoint responde `409 Conflict` sin crear ningún registro en `remediation_actions`. Depende de `LOG-US3-DB-02B` — no puede cerrarse antes.
+
+
+
+#### `LOG-US4-BE-02B`: Captura Diferenciada de stdout/stderr en el Registro de Auditoría
+
+* **Descripción:** Extender `SecuritySandbox` (`LOG-US4-BE-01`) y la persistencia de `RemediationAction` (`LOG-US4-BE-02`) para capturar y exponer los buffers de `stdout` y `stderr` por separado, en vez de un único `executionLog` combinado, de modo que el frontend (`LOG-US4-FE-03`) pueda diferenciar visualmente ambos flujos sin recurrir a heurísticas de texto poco confiables sobre un string combinado. Decisión de diseño (aprobada 2026-08-11, resolución de `CONTRACT_GATE: DRIFT_DETECTED` detectado al planificar `LOG-US4-FE-03`): alinear el contrato al ticket.
+* **Criterios de Aceptación Técnicos:**
+* Extender `SandboxExecutionResult` (resultado de `SecuritySandbox.executeInIsolation`) para exponer `stdout` y `stderr` como campos independientes. Implementación: capturar `process.getInputStream()` y `process.getErrorStream()` por separado (sin `redirectErrorStream(true)`), en vez de combinarlos en un único `output`.
+* Reemplazar la columna `execution_log` de `remediation_actions` por `stdout_log` (`TEXT`, nullable) y `stderr_log` (`TEXT`, nullable) vía migración Flyway (próxima versión disponible). No se mantiene un campo combinado de compatibilidad — ningún consumidor externo depende todavía de la forma actual (el frontend de `LOG-US4-FE-03` recién se va a implementar).
+* Extender el dominio `RemediationAction`, `RemediationActionJpaEntity`, `RemediationActionPersistenceAdapter` y el DTO `RemediationActionResponse` para reemplazar `executionLog` por `stdoutLog`/`stderrLog`.
+* Actualizar el contrato OpenAPI (`RemediationAction` schema): quitar `executionLog`, agregar `stdoutLog`/`stderrLog` (string, nullable), documentando el propósito de cada uno.
+* Actualizar todos los tests existentes que referencian `executionLog` (`RemediationStateMachineTest`, `RemediationStateMachineIntegrationTest`, `RemediationActionPersistenceAdapterIntegrationTest`, `RemediationControllerTest`, `RemediationActionsTableIntegrationTest`) sin dejar ningún test roto.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR) para cada pieza nueva.
 
 
 
@@ -258,10 +287,33 @@
 * **Formateo de Consola Defensivo:** El contenido mapeado dentro de la Terminal de Salida debe diferenciar drásticamente el tipo de buffer recibido:
 * Las líneas capturadas desde la salida estándar estándar del backend (`stdout`) se renderizarán en tipografía gris claro o blanca ordinaria.
 * Las líneas procedentes de la salida de error del sistema operativo (`stderr`) se interceptarán y pintarán al vuelo en un **color rojo brillante de alerta (`#ff3333`) antepuestas por la etiqueta rígida `[ERROR]**`, garantizando que el operador identifique fallos en el script de manera visual e inmediata.
+* **Nota (resolución de drift de contrato, 2026-08-11):** `RemediationAction` expone `stdoutLog`/`stderrLog` como campos independientes (`LOG-US4-BE-02B`), no un `executionLog` combinado — el frontend debe consumir ambos campos por separado, sin heurísticas de parseo de texto sobre un string único. Depende de `LOG-US4-BE-02B` — no puede cerrarse antes.
 
 
 * Al finalizar, el frontend cambiará `executionStatus` a `'EXECUTION_SUCCESS'` o `'EXECUTION_FAILED'` basándose en el código de salida HTTP o el código numérico de salida de proceso (`exitCode: 0` para éxito, mayor a 0 para error), liberando la UI y pintando un indicador visual definitivo de conclusión.
 
+
+
+#### `LOG-US4-BE-03`: Endpoint de Detalle Consolidado de Incidente
+
+* **Descripción:** Implementar el endpoint de lectura que consolida el detalle de un incidente — incluyendo su historial de diagnósticos generados por IA con el script de remediación sugerido, si existe — para que el frontend pueda montar el panel de remediación contra datos reales.
+* **Criterios de Aceptación Técnicos:**
+* Implementar `GET /incidents/{id}` en `IncidentController`, delegando a un caso de uso de lectura dedicado (no lógica de negocio en el controller), devolviendo `IncidentDetail` tal como lo define `docs/openapi: 3.0.yml` (`Incident` + `analyses: IncidentAnalysis[]`).
+* Si el `id` no corresponde a ningún incidente existente, responder `404 Not Found`, tal como especifica el contrato.
+* El campo `analyses` debe incluir el/los diagnóstico(s) persistidos para ese incidente (entidad `IncidentDiagnostic`, ya existente desde `LOG-US3-DB-02`/`LOG-US3-DB-02B`), mapeados al schema `IncidentAnalysis` del contrato — incluyendo `suggestedScript`.
+* Cobertura de test: incidente existente con diagnóstico(s) asociado(s), incidente existente sin diagnósticos (`analyses` vacío), incidente inexistente (`404`).
+* **Nota (resolución de `DEBT-003`, 2026-08-11):** este endpoint estaba definido en el contrato desde el inicio de US4 pero nunca se implementó; su ausencia dejó a `RemediationPanel` (`LOG-US4-FE-03`) sin poder montarse en ninguna página. Ver `LOG-US4-FE-04` para el wiring correspondiente en el frontend.
+
+
+#### `LOG-US4-FE-04`: Montaje de RemediationPanel en el Dashboard de Incidentes
+
+* **Descripción:** Integrar el componente `RemediationPanel` (ya implementado y testeado en `LOG-US4-FE-03`, pero no montado en ninguna página) en `IncidentDashboardPage.tsx`, consumiendo `GET /incidents/{id}` (`LOG-US4-BE-03`) para obtener el script sugerido, cerrando el gap documentado en `DEBT-003`.
+* **Criterios de Aceptación Técnicos:**
+* Agregar un hook de fetch (ej. `useIncidentDetail`) que llame a `GET /incidents/{id}` y exponga el `IncidentDetail` resultante (incluyendo el `suggestedScript` del diagnóstico más reciente) a `IncidentDashboardPage.tsx`.
+* Montar `RemediationPanel` en `IncidentDashboardPage.tsx`, pasándole el `incidentId`/`suggestedScript` obtenidos del fetch.
+* Manejar los estados de carga/error del fetch sin romper el resto de la página — `DiagnosticTerminal` (ya montado desde `LOG-US3-FE-03`) debe seguir funcionando de forma independiente.
+* Test de integración de página: dado un incidente con `suggestedScript` no nulo, el botón "Ejecutar Script de Remediación" debe ser alcanzable y clickeable en el DOM renderizado (esto es lo que habilita el paso de UI del Gherkin de `LOG-US4-E2E-04`).
+* **Depende de `LOG-US4-BE-03`** — no puede cerrarse antes.
 
 
 #### `LOG-US4-E2E-04`: Orquestación de Tests End-to-End con Playwright

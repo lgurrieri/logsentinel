@@ -1,6 +1,7 @@
 package com.logsentinel.infrastructure.adapters.in.web;
 
 import com.logsentinel.application.ports.in.CreateIncidentUseCase;
+import com.logsentinel.application.ports.in.GetIncidentDetailUseCase;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +26,9 @@ class IncidentControllerCorsTest {
 
     @MockitoBean
     private CreateIncidentUseCase createIncidentUseCase;
+
+    @MockitoBean
+    private GetIncidentDetailUseCase getIncidentDetailUseCase;
 
     @Test
     @DisplayName("should allow cross-origin preflight requests from the frontend dev origin")
