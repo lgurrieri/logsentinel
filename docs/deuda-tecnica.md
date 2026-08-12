@@ -124,3 +124,51 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   constructor de `Incident` (impacta 6 archivos del proyecto).
 * **Estado:** Abierto
 * **Detectado:** 2026-08-11
+
+---
+
+### `DEBT-005`: Primer arranque de la suite E2E depende de una descarga lenta de imagen/modelos de Ollama (si no hay Ollama nativo en el host)
+
+* **Origen:** `LOG-US4-E2E-04`
+* **Descripción:** `global-setup.ts` levantaba originalmente `db`, `ollama` y
+  `backend` vía Docker Compose antes de correr la suite Playwright. En un
+  entorno sin la imagen `ollama/ollama:latest` ni los modelos
+  `llama3.1`/`nomic-embed-text` ya cacheados localmente, el primer arranque
+  observado en este ticket avanzó a ~1.8 MB/s de descarga solo para la imagen
+  base de Ollama (varios GB), con un tiempo de bootstrap estimado en el orden
+  de una hora en la primera corrida.
+  **Mitigado (ronda 2):** `global-setup.ts` ahora detecta, antes de tocar
+  Docker, si ya hay una instancia nativa de Ollama corriendo en el host
+  (`http://localhost:11434`, `GET /api/tags`, timeout 2s) con los modelos ya
+  descargados. Si la detecta (**Plan A**), levanta solo `db` y `backend` con
+  `docker compose ... --no-deps` + un override
+  (`frontend/e2e/docker-compose.e2e-native-ollama.yml`) que redirige
+  `SPRING_AI_OLLAMA_BASE_URL` a `http://host.docker.internal:11434`, evitando
+  por completo el contenedor `ollama` y su descarga. Verificado en este
+  entorno: corrida real de `npm run test:e2e` contra la pila completa
+  (`db`+`backend` dockerizados + Ollama nativo del host) — **GREEN, 1
+  passed, ~24s** (incluyendo build de la imagen del backend). Si NO se
+  detecta Ollama nativo (**Plan B**), la suite hace `test.skip(...)` con un
+  mensaje explícito en vez de intentar el contenedor `ollama` lento o fallar
+  contra infraestructura inexistente.
+* **Impacto:** Con Ollama nativo disponible en el host (caso cubierto y
+  verificado), el arranque de la suite E2E es rápido y confiable. El
+  contenedor `ollama` de `docker-compose.yml` sigue existiendo sin cambios
+  para quien no tenga Ollama nativo instalado, pero en ese caso la suite
+  ahora se salta explícitamente (Plan B) en vez de colgarse — sigue sin
+  resolverse el caso de un entorno 100% containerizado sin Ollama nativo
+  disponible (ej. runner de CI efímero), donde correr esta suite implicaría
+  el mismo costo de descarga original.
+* **Sugerencia de resolución (para el caso 100% containerizado, ej. CI):**
+  (a) Pre-calentar la imagen/modelos de Ollama como paso separado de
+  "warm-up" de infraestructura (fuera del alcance de `frontend/`, ej. un job
+  de CI que corra `docker compose pull` + `ollama pull` una vez y cachee el
+  volumen entre corridas); o (b) evaluar un perfil Ollama liviano dedicado a
+  E2E con un modelo mucho más pequeño; o (c) instalar Ollama nativo en el
+  runner de CI (fuera de Docker) para que el mismo Plan A aplique ahí.
+  Ninguna de estas opciones es responsabilidad de `frontend/` en solitario —
+  requiere una decisión de infraestructura/CI transversal.
+* **Estado:** Mitigado (Plan A verificado GREEN con Ollama nativo; Plan B
+  evita el bloqueo pero no resuelve el caso 100% containerizado sin Ollama
+  nativo)
+* **Detectado:** 2026-08-11

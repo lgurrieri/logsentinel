@@ -24,4 +24,7 @@ dist-ssr
 *.sw?
 
 test-results
+playwright-report
+blob-report
+playwright/.cache
 
