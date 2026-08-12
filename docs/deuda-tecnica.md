@@ -286,3 +286,38 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
 * **Estado:** Cerrado
 * **Detectado:** 2026-08-12
 * **Cerrado:** 2026-08-12
+
+---
+
+### `DEBT-010`: El prompt del diagnóstico no le pide al LLM un bloque de código Markdown — `suggestedScript` queda `null` en la práctica
+
+* **Origen:** Verificación end-to-end en producción de `LOG-US3-BE-04` (creación de 3
+  incidentes reales vía `az vm run-command invoke`, sin SSH, contra el contenedor
+  `backend` directo).
+* **Descripción:** `StreamDiagnosticService.buildSystemPrompt`/`buildUserPrompt` piden
+  un diagnóstico grounded en los runbooks recuperados, pero **no instruyen en ningún
+  lado** al LLM a emitir el comando de remediación dentro de un bloque de código
+  Markdown (```` ``` ````). `SuggestedScriptExtractor.extract` (regex
+  ` ```[^\n\r]*\r?\n(.*?)``` `) es permisivo (acepta con o sin tag de lenguaje, toma
+  el primer fence), pero si el LLM nunca genera un fence —como ocurre consistentemente
+  con el runbook seedeado de `auth-service`, cuyo propio texto usa comillas invertidas
+  simples inline ("ejecutando: `echo '...'`")— la extracción no tiene nada que
+  parsear y devuelve `null` siempre, sin importar cuán correcto sea el diagnóstico.
+* **Impacto:** Verificado en vivo: 3/3 generaciones reales contra Ollama
+  (llama3.1) en la VM de demo devolvieron `diagnosticOutput` correcto y persistido
+  (confirmando que `LOG-US3-BE-04` funciona), pero `suggestedScript: null` en los 3
+  casos — el LLM parafraseó el runbook con comillas invertidas simples en vez de un
+  fence. Esto bloquea completamente el flujo feliz de US4 (`POST
+  /incidents/{id}/remediations` devuelve 409 sin `suggestedScript`): no se puede
+  ejercitar la ejecución de remediación en la demo con el runbook actual tal como
+  está seedeado, aunque el pipeline de diagnóstico (US2/US3) funcione end-to-end.
+* **Sugerencia de resolución:** agregar una instrucción explícita al `systemPrompt`
+  (ej. "si recomendás un comando, envolvelo siempre en un bloque \`\`\`bash \`\`\`
+  al final de tu respuesta") y/o reescribir el contenido semilla de
+  `runbook_chunks` para que el propio runbook modele el formato esperado (few-shot
+  implícito) — el LLM tiende a imitar el estilo del contexto recuperado. Requiere
+  ticket dedicado con TDD (test de `SuggestedScriptExtractor`/`StreamDiagnosticService`
+  fijando el prompt esperado) dado que es un cambio de comportamiento, no solo de
+  documentación.
+* **Estado:** Abierto
+* **Detectado:** 2026-08-12
