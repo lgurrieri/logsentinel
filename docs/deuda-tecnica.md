@@ -100,8 +100,8 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   análisis/diagnóstico asociado con su `suggestedScript`), y (b) agregue el fetch +
   wiring de `RemediationPanel` en `IncidentDashboardPage.tsx` una vez ese endpoint
   exista.
-* **Estado:** Convertido a ticket (`LOG-US4-BE-03` implementa el endpoint; `LOG-US4-FE-04`
-  pendiente para el wiring en el frontend)
+* **Estado:** Cerrado (`LOG-US4-BE-03` implementó el endpoint; `LOG-US4-FE-04` montó
+  `RemediationPanel` en `IncidentDashboardPage.tsx` vía `useIncidentDetail`)
 * **Detectado:** 2026-08-11
 
 ---

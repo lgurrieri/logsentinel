@@ -70,8 +70,8 @@ PASO 2.5).
 | LOG-US4-BE-02B | logsentinel-backend-implementer | completed | 1 | 13c99c0 | humano | 2026-08-11 |
 | LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | 9390216 | humano | 2026-08-11 |
 | LOG-US4-BE-03 | logsentinel-backend-implementer | completed (PARTIAL, ver DEBT-004) | 1 | 4a2bd79 | humano | 2026-08-11 |
-| LOG-US4-FE-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
-| LOG-US4-E2E-04 | logsentinel-frontend-implementer | blocked (por LOG-US4-BE-03/FE-04) | 0 | — | — | — |
+| LOG-US4-FE-04 | logsentinel-frontend-implementer | completed | 1 | 873d1c7 | humano | 2026-08-11 |
+| LOG-US4-E2E-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
 
 ## RESUELTO (2026-08-11): DEBT-003 bloquea LOG-US4-E2E-04 — tickets nuevos creados
 
@@ -89,7 +89,14 @@ backend/frontend, mismo patrón que `BE-02B`/`FE-03`), texto completo en
   ese endpoint. Depende de `LOG-US4-BE-03`.
 
 Orden de ejecución obligatorio: `LOG-US4-BE-03` → `LOG-US4-FE-04` → (recién entonces)
-`LOG-US4-E2E-04`. `DEBT-003` se marcará "Convertido a ticket" cuando ambos cierren.
+`LOG-US4-E2E-04`.
+
+**Actualización (2026-08-11): ambos tickets completados.** `LOG-US4-BE-03` (commit
+`4a2bd79`, STATUS: PARTIAL — ver `DEBT-004`, gaps preexistentes de `tokensUsed`/`updatedAt`
+no bloqueantes). `LOG-US4-FE-04` (commit `873d1c7`, STATUS: GREEN, 109 tests, sin drift).
+`DEBT-003` marcado **Cerrado** en `docs/deuda-tecnica.md`. `RemediationPanel` ahora
+alcanzable y clickeable en `IncidentDashboardPage.tsx` vía `useIncidentDetail` →
+`LOG-US4-E2E-04` queda **desbloqueado**.
 
 ## RESUELTO (2026-08-11): CONTRACT_GATE: DRIFT_DETECTED de LOG-US4-FE-03 (stdout/stderr)
 
