@@ -1,0 +1,33 @@
+services:
+  # Overlay de produccion (demo Azure): NO se toca docker-compose.yml
+  # (misma config ya probada en CI/E2E/dev). Este archivo solo agrega Nginx
+  # y reemplaza el build: del backend por una imagen ya construida en GHCR.
+
+  db:
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: !reset []  # 5432 nunca expuesto públicamente -- defensa en profundidad ademas de la NSG
+
+  ollama:
+    ports: !reset []  # 11434 nunca expuesto públicamente -- defensa en profundidad ademas de la NSG
+
+  backend:
+    build: !reset null
+    image: ${BACKEND_IMAGE}
+    environment:
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+    ports: !reset []  # 8080 nunca expuesto públicamente -- solo accesible via nginx en la red interna de compose
+
+  nginx:
+    image: nginx:alpine
+    container_name: logsentinel-nginx
+    depends_on:
+      backend:
+        condition: service_started
+    volumes:
+      - ./IaC/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./IaC/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    ports:
+      - "80:80"
+    restart: unless-stopped

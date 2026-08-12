@@ -1,0 +1,129 @@
+name: CD
+
+# Solo dispatch manual -- nunca push-to-main automatico. Elimina el riesgo de
+# un redeploy accidental cerca de la ventana de demo (10:30-16:15 ART).
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/lgurrieri/logsentinel-backend
+
+jobs:
+  build-push-backend:
+    name: Build & Push Backend Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    outputs:
+      image_tag: ${{ steps.tag.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Compute image tag
+        id: tag
+        run: echo "image_tag=${IMAGE_NAME}:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8026d2bc3645ea78b0d2544766a1225eb5691f89  # v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8  # v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.tag.outputs.image_tag }}
+
+  build-frontend:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: 'frontend/package-lock.json'
+
+      - name: Install and build
+        working-directory: frontend
+        env:
+          # Vacio a proposito: nginx sirve el frontend y proxea /api/ al backend
+          # en el MISMO origen -- las llamadas fetch/EventSource quedan
+          # relativas (`/api/v1/...`) en vez de apuntar a localhost:8080.
+          VITE_API_BASE_URL: ''
+        run: |
+          npm ci
+          npm run build
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 1
+
+  deploy:
+    name: Deploy to Azure VM
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    needs: [build-push-backend, build-frontend]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
+
+      - name: Download frontend dist artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.AZURE_VM_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "${{ secrets.AZURE_VM_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Authenticate VM against GHCR
+        # Usa el mismo GITHUB_TOKEN del job (permiso packages:write ya incluye
+        # lectura sobre paquetes del propio repo) -- evita depender de marcar
+        # el paquete público a mano entre el push y este pull.
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
+            "docker login ghcr.io -u ${{ github.actor }} --password-stdin" <<< "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Copy compose/config files + frontend build to the VM
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
+            'sudo mkdir -p /opt/logsentinel/IaC/nginx /opt/logsentinel/frontend/dist && sudo chown -R $(whoami) /opt/logsentinel/IaC /opt/logsentinel/frontend'
+          scp -i ~/.ssh/deploy_key docker-compose.yml docker-compose.prod.yml \
+            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/"
+          scp -i ~/.ssh/deploy_key IaC/nginx/nginx.conf \
+            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/IaC/nginx/"
+          scp -i ~/.ssh/deploy_key -r frontend/dist/. \
+            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/frontend/dist/"
+
+      - name: Pull and restart stack
+        env:
+          IMAGE_TAG: ${{ needs.build-push-backend.outputs.image_tag }}
+        run: |
+          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
+            "cd /opt/logsentinel && \
+             sed -i 's|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE_TAG}|' .env && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && \
+             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait"

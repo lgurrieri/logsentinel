@@ -7,6 +7,11 @@ auditada de la remediación sugerida (US4).
 > Todos los comandos asumen que estás parado en la raíz del repo (`logsentinel/`),
 > salvo que se indique lo contrario.
 
+> **Dos modos de demo**: local (secciones 1–7, contra `localhost`) o en una VM de
+> Azure ya desplegada (sección 8, contra la URL pública). Si la VM ya está
+> corriendo, saltá directo a la sección 8 y usá esa URL en los pasos 4–6 en vez de
+> `localhost:5173`.
+
 ---
 
 ## 1. Prerequisitos
@@ -173,3 +178,100 @@ docker compose exec -T db psql -U logsentinel -d logsentinel -c \
 ```
 Luego `Ctrl+C` en las terminales de backend/frontend, y `docker compose down` si no
 querés dejar la base corriendo.
+
+---
+
+## 8. Despliegue en Azure
+
+Corre el stack containerizado sin cambios (`db`+`ollama`+`backend` de
+`docker-compose.yml`) en una VM de Azure, más un overlay `docker-compose.prod.yml`
+que agrega Nginx (único punto de entrada público, puerto 80, con Basic Auth) y
+reemplaza el `build:` del backend por la imagen ya construida en GHCR. Ver
+`docs/deuda-tecnica.md` (`DEBT-006`/`007`/`008`) para las limitaciones aceptadas
+a propósito para esta demo.
+
+### 8.1 Aprovisionar la VM (una sola vez)
+
+1. `az login` interactivo y confirmar la suscripción correcta:
+   ```bash
+   az account show --query "{name:name, id:id}" -o table
+   ```
+2. Chequear cupo de la región/tamaño de VM elegidos (`brazilsouth` preferido por
+   latencia; `eastus2` como fallback si no hay cupo):
+   ```bash
+   az vm list-usage --location brazilsouth -o table
+   az vm list-skus --location brazilsouth --size Standard_D4as_v4 --all -o table
+   ```
+3. Generar un par de claves SSH **dedicado** (no reusar claves personales):
+   ```bash
+   ssh-keygen -t ed25519 -f ./logsentinel-vm -C "logsentinel-demo"
+   ```
+4. Exportar las variables requeridas por `IaC/scripts/provision-vm.sh` (ver el
+   encabezado del script para la lista completa: `RESOURCE_GROUP`, `LOCATION`,
+   `VM_NAME`, `DNS_LABEL`, `ADMIN_USER`, `SSH_PUBLIC_KEY_PATH`,
+   `POSTGRES_PASSWORD`, `NGINX_BASIC_AUTH_USER`, `NGINX_BASIC_AUTH_PASS`,
+   `MY_PUBLIC_IP` — `curl -s ifconfig.me` —, `BUDGET_AMOUNT_ARS`,
+   `BUDGET_ALERT_EMAIL`) y correrlo:
+   ```bash
+   ./IaC/scripts/provision-vm.sh
+   ```
+   Crea, en orden: resource group, budget con alerta al 80%/100%, VNet+NSG (SSH
+   acotado a `MY_PUBLIC_IP`, puerto 80 público, resto denegado), IP pública
+   Standard con DNS label estático, la VM (cloud-init instala Docker y deja
+   `.env`/`.htpasswd` listos), y una Automation Account con rol `Virtual Machine
+   Contributor` acotado solo a esta VM.
+5. Subir los runbooks de la Automation Account creada:
+   - `IaC/scripts/automation-start.ps1` (enciende la VM + smoke test real dentro
+     de ella antes de reportar éxito)
+   - `IaC/scripts/automation-stop.ps1` (`Stop-AzVM -Deallocate`)
+   Crear en la Automation Account las variables `ResourceGroupName`/`VMName` y la
+   credencial `NginxBasicAuth`, y programar los schedules: **10:30 ART** (start) /
+   **16:15 ART** (stop).
+
+### 8.2 Configurar GitHub para el deploy continuo
+
+1. Crear el Environment `production` (Settings → Environments) con estos 5
+   secrets:
+
+   | Secret | Contenido |
+   |---|---|
+   | `AZURE_VM_HOST` | DNS label fijo de la VM (`{DNS_LABEL}.{LOCATION}.cloudapp.azure.com`) |
+   | `AZURE_VM_SSH_USER` | `ADMIN_USER` usado en el provisioning |
+   | `AZURE_VM_SSH_PRIVATE_KEY` | Contenido de `./logsentinel-vm` (la clave privada dedicada del paso 8.1.3) |
+   | `POSTGRES_PASSWORD` | El mismo valor exportado como `POSTGRES_PASSWORD` en 8.1.4 |
+   | `NGINX_BASIC_AUTH_USER` / `NGINX_BASIC_AUTH_PASS` | Los mismos valores de 8.1.4 |
+
+2. **Settings → Actions → General → Workflow permissions** → marcar "Read and
+   write permissions" (sin esto, el push a GHCR falla con 403).
+3. No hace falta marcar el paquete GHCR como público: el job `deploy` de
+   `cd.yml` autentica la VM contra `ghcr.io` con el mismo `GITHUB_TOKEN` del
+   job antes de hacer `docker compose pull`.
+
+### 8.3 Desplegar
+
+1. Disparar manualmente el workflow `.github/workflows/cd.yml`
+   (`workflow_dispatch` — Actions → CD → Run workflow). Build de la imagen
+   backend + push a GHCR, build del frontend (con `VITE_API_BASE_URL=""` para que
+   quede same-origin vía Nginx), y deploy por SSH/SCP a la VM.
+2. Verificar que los 4 servicios estén healthy:
+   ```bash
+   ssh -i ./logsentinel-vm "${ADMIN_USER}@${DNS_LABEL}.${LOCATION}.cloudapp.azure.com" \
+     'cd /opt/logsentinel && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps'
+   ```
+3. Recorrer el flujo completo de las secciones 3–6 de este runbook contra la URL
+   pública (`https://{DNS_LABEL}.{LOCATION}.cloudapp.azure.com`, con las
+   credenciales de `NGINX_BASIC_AUTH_USER`/`PASS` cuando el navegador las pida),
+   **antes** del horario de la demo — no alcanza con confiar en el smoke test
+   automático del arranque.
+4. Confirmar en Azure Cost Management el gasto acumulado y la moneda real de
+   facturación dentro de la primera hora.
+
+### 8.4 Operación diaria (una vez ya desplegado)
+
+La Automation Account enciende/apaga la VM sola (10:30/16:15 ART). Para un
+redeploy de código nuevo, repetir solo el paso 8.3.1. Para apagar/prender fuera
+de horario manualmente:
+```bash
+az vm start --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}"
+az vm deallocate --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}"
+```
