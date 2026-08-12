@@ -69,7 +69,7 @@ PASO 2.5).
 | LOG-US4-TEST-03 | logsentinel-backend-implementer | completed | 1 | b68e9bc | humano | 2026-08-11 |
 | LOG-US4-BE-02B | logsentinel-backend-implementer | completed | 1 | 13c99c0 | humano | 2026-08-11 |
 | LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | 9390216 | humano | 2026-08-11 |
-| LOG-US4-BE-03 | logsentinel-backend-implementer | pending | 0 | — | — | — |
+| LOG-US4-BE-03 | logsentinel-backend-implementer | completed (PARTIAL, ver DEBT-004) | 1 | 4a2bd79 | humano | 2026-08-11 |
 | LOG-US4-FE-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
 | LOG-US4-E2E-04 | logsentinel-frontend-implementer | blocked (por LOG-US4-BE-03/FE-04) | 0 | — | — | — |
 
