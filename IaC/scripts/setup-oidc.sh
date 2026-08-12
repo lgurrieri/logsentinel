@@ -49,7 +49,19 @@ fi
 # ---------------------------------------------------------------------------
 # Federated Identity Credential -- token de corta vida emitido por GitHub
 # Actions, sin client-secret persistido en ningún lado.
+#
+# GitHub emite el claim `sub` calificado con los IDs numéricos e inmutables
+# del owner/repo (`repo:OWNER@OWNER_ID/REPO@REPO_ID:environment:...`), no solo
+# los nombres -- así el subject sigue siendo válido si el owner o el repo se
+# renombran más adelante. Hay que usar ese mismo formato acá o Azure AD
+# rechaza el token con AADSTS700213 (verificado en este deploy).
 # ---------------------------------------------------------------------------
+echo "==> Resolviendo IDs inmutables de ${GITHUB_REPO}"
+GITHUB_OWNER="${GITHUB_REPO%%/*}"
+GITHUB_REPO_NAME="${GITHUB_REPO##*/}"
+OWNER_ID="$(gh api "users/${GITHUB_OWNER}" --jq '.id')"
+REPO_ID="$(gh api "repos/${GITHUB_REPO}" --jq '.id')"
+
 echo "==> Federated Identity Credential para ${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}"
 FEDERATED_CRED_FILE="$(mktemp)"
 trap 'rm -f "${FEDERATED_CRED_FILE}"' EXIT
@@ -57,13 +69,14 @@ cat > "${FEDERATED_CRED_FILE}" <<EOF
 {
   "name": "logsentinel-cd-${GITHUB_ENVIRONMENT}",
   "issuer": "https://token.actions.githubusercontent.com",
-  "subject": "repo:${GITHUB_REPO}:environment:${GITHUB_ENVIRONMENT}",
+  "subject": "repo:${GITHUB_OWNER}@${OWNER_ID}/${GITHUB_REPO_NAME}@${REPO_ID}:environment:${GITHUB_ENVIRONMENT}",
   "audiences": ["api://AzureADTokenExchange"]
 }
 EOF
 
 if az ad app federated-credential show --id "${APP_ID}" --federated-credential-id "logsentinel-cd-${GITHUB_ENVIRONMENT}" >/dev/null 2>&1; then
-  echo "==> Federated credential ya existía"
+  az ad app federated-credential update --id "${APP_ID}" --federated-credential-id "logsentinel-cd-${GITHUB_ENVIRONMENT}" --parameters "${FEDERATED_CRED_FILE}" -o none
+  echo "==> Federated credential actualizada (subject re-verificado)"
 else
   az ad app federated-credential create --id "${APP_ID}" --parameters "${FEDERATED_CRED_FILE}" -o none
   echo "==> Federated credential creada"
