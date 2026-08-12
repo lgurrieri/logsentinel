@@ -127,6 +127,12 @@ jobs:
           IMAGE_TAG: ${{ needs.build-push-backend.outputs.image_tag }}
         run: |
           cat > remote-deploy.sh <<'SCRIPT'
+          #!/usr/bin/env bash
+          # Azure Run Command invoca los scripts via `sh` (dash en esta VM Ubuntu
+          # 24.04), que no soporta `set -o pipefail` y aborta el script entero al
+          # toparse con esa opcion invalida (verificado en vivo: el deploy previo
+          # fallo en silencio, sin que az vm run-command ni el step de Actions lo
+          # reportaran). El shebang fuerza la re-ejecucion bajo bash.
           set -euo pipefail
           STORAGE_ACCOUNT="$1"
           BLOB_NAME="$2"
@@ -151,12 +157,26 @@ jobs:
           sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE_TAG}|" .env
           docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
           docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+          echo "DEPLOY_OK"
           SCRIPT
 
+          # `az vm run-command invoke` reporta "ProvisioningState/succeeded" con
+          # exit code 0 aun si el script que ejecuta falla (verificado en vivo:
+          # un script que hace `exit 1` a mitad de camino igual devuelve
+          # "succeeded") -- la extension solo confirma que pudo *lanzar* el
+          # script, no que haya terminado bien. Por eso el sentinel final
+          # DEPLOY_OK: si no aparece en stdout, el step falla explicitamente en
+          # vez de mostrar un verde falso.
           az vm run-command invoke \
             --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
             --name "${{ vars.AZURE_VM_NAME }}" \
             --command-id RunShellScript \
             --scripts @remote-deploy.sh \
-            --parameters "${{ vars.AZURE_STORAGE_ACCOUNT }}" "bundle-${{ github.sha }}.tar.gz" "${IMAGE_TAG}"
+            --parameters "${{ vars.AZURE_STORAGE_ACCOUNT }}" "bundle-${{ github.sha }}.tar.gz" "${IMAGE_TAG}" \
+            -o json | tee run-command-result.json
+
+          if ! grep -q "DEPLOY_OK" run-command-result.json; then
+            echo "::error::El script de deploy remoto no llego a completar (falta el sentinel DEPLOY_OK) -- ver stdout/stderr arriba."
+            exit 1
+          fi
 
