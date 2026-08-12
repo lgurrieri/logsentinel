@@ -240,3 +240,27 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   de CI que corra `az deployment group what-if` en PRs que toquen `IaC/`.
 * **Estado:** Abierto
 * **Detectado:** 2026-08-12
+
+---
+
+### `DEBT-009`: SSH (puerto 22) abierto a Internet para que `cd.yml` alcance la VM
+
+* **Origen:** `IaC/scripts/provision-vm.sh` (regla NSG `AllowSSHFromMyIP`), ajustada
+  manualmente tras el primer redeploy fallido de `cd.yml`.
+* **Descripción:** La regla NSG que restringía el puerto 22 a la IP personal de quien
+  corrió `provision-vm.sh` bloqueaba al runner de GitHub Actions (IP dinámica, no
+  perteneciente a ese `/32`) cuando se activó el trigger automático de `cd.yml` en cada
+  push a `main`. Se amplió el `source-address-prefixes` de esa regla a `*` para
+  desbloquear el job `deploy`. El nombre de la regla (`AllowSSHFromMyIP`) quedó
+  desactualizado respecto a su alcance real.
+* **Impacto:** El puerto 22 queda expuesto a escaneo/intentos de fuerza bruta desde
+  cualquier origen. Mitigado parcialmente porque la VM solo acepta autenticación por
+  clave pública (sin password auth), pero sigue siendo superficie de ataque innecesaria
+  para una VM de demo.
+* **Sugerencia de resolución:** migrar el job `deploy` de `cd.yml` a autenticar contra
+  Azure vía OIDC federado (sin secret de larga vida) y ejecutar los pasos con
+  `az vm run-command invoke` en vez de SSH/SCP directo — así la NSG puede volver a
+  restringir el puerto 22 a una IP fija sin bloquear el pipeline. Alternativa más simple:
+  agregar `fail2ban` en el cloud-init y renombrar la regla NSG para reflejar su alcance real.
+* **Estado:** Abierto
+* **Detectado:** 2026-08-12
