@@ -172,3 +172,71 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   evita el bloqueo pero no resuelve el caso 100% containerizado sin Ollama
   nativo)
 * **Detectado:** 2026-08-11
+
+---
+
+### `DEBT-006`: Demo de Azure sin TLS — Basic Auth como única barrera pública
+
+* **Origen:** Plan de despliegue en Azure (VM de demo)
+* **Descripción:** `IaC/nginx/nginx.conf` sirve todo el tráfico público en texto
+  plano por el puerto 80 (`listen 80`, sin bloque `443 ssl`), protegido solo por
+  `auth_basic`. Credenciales y todo el tráfico (incluido el streaming SSE del
+  diagnóstico) viajan sin cifrar entre el navegador de la audiencia y la VM.
+* **Impacto:** Cualquiera en la misma red que un cliente de la demo podría
+  interceptar las credenciales de Basic Auth o el contenido de los incidentes.
+  Aceptable para una demo acotada a una franja horaria (10:30–16:15 ART) con
+  audiencia conocida, pero no debe reusarse tal cual para un despliegue con
+  usuarios reales.
+* **Sugerencia de resolución:** agregar Let's Encrypt (Certbot con el plugin de
+  Nginx, o un sidecar `caddy` que automatice HTTP-01) una vez que el DNS label
+  de la VM sea estable, o terminar TLS en un Azure Application Gateway /
+  Front Door delante de la VM.
+* **Estado:** Abierto
+* **Detectado:** 2026-08-12
+
+---
+
+### `DEBT-007`: Password de Postgres de la demo Azure sin Key Vault/Managed Identity
+
+* **Origen:** `IaC/scripts/provision-vm.sh` / `IaC/scripts/cloud-init.yaml`
+* **Descripción:** `POSTGRES_PASSWORD` se genera fuera de banda (a mano, por
+  quien corre `provision-vm.sh`) y se inyecta en texto plano vía cloud-init
+  (`--custom-data`) a dos archivos con permisos `600`
+  (`/opt/logsentinel/backend/.env`, `/opt/logsentinel/.env`). El mismo valor se
+  guarda además como GitHub Secret para que `cd.yml` lo reescriba en cada
+  deploy. No hay rotación ni un origen único de verdad para el secreto.
+* **Impacto:** El secreto vive duplicado en dos sistemas (GitHub Secrets +
+  archivos en la VM) sin rotación automática; cualquiera con acceso de lectura
+  a la VM (o a las variables de Automation Account/logs de run-command) puede
+  verlo en texto plano. Aceptable para una demo de un día con un password
+  random no reusado de dev, pero no escala a un entorno persistente.
+* **Sugerencia de resolución:** mover el secreto a Azure Key Vault, habilitar
+  una identidad administrada en la VM con permiso de lectura sobre ese Key
+  Vault, y que el arranque del backend lo resuelva en runtime (via
+  `azure-keyvault` Spring Cloud starter o un script de arranque que exporte la
+  variable desde `az keyvault secret show`) en vez de bakearlo en un archivo.
+* **Estado:** Abierto
+* **Detectado:** 2026-08-12
+
+---
+
+### `DEBT-008`: Provisioning de Azure imperativo (az CLI), sin IaC reproducible
+
+* **Origen:** `IaC/scripts/provision-vm.sh`
+* **Descripción:** Todo el aprovisionamiento (resource group, budget, red, NSG,
+  IP pública, VM, Automation Account, RBAC) es una secuencia de comandos
+  `az ...` en un script bash, no una plantilla declarativa (Bicep/Terraform).
+  Es idempotente por convención (nombres de recursos fijos, Azure actualiza en
+  vez de duplicar) pero no hay `plan`/`diff` previo a aplicar cambios, ni
+  estado versionado del despliegue.
+* **Impacto:** Un cambio de infraestructura requiere leer y entender el script
+  completo para saber qué va a pasar; no hay forma de previsualizar un diff
+  antes de aplicarlo, ni de detectar drift entre lo declarado y lo real en el
+  portal. Elegido deliberadamente para el día del deploy por menor riesgo de
+  debug de sintaxis bajo presión de tiempo (ver el plan de despliegue de esta
+  sesión) — no por preferencia a largo plazo.
+* **Sugerencia de resolución:** migrar `provision-vm.sh` a un módulo Bicep (o
+  Terraform, si el equipo ya lo usa en otro lado) versionado, con un pipeline
+  de CI que corra `az deployment group what-if` en PRs que toquen `IaC/`.
+* **Estado:** Abierto
+* **Detectado:** 2026-08-12

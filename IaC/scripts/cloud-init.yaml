@@ -1,0 +1,76 @@
+#cloud-config
+# cloud-init para la VM de demo de LogSentinel (despliegue Azure -- ver
+# docs/demo-runbook.md seccion "Despliegue en Azure" y el plan de la sesion).
+#
+# Placeholders __POSTGRES_PASSWORD__ / __NGINX_BASIC_AUTH_USER__ /
+# __NGINX_BASIC_AUTH_PASS__ los reemplaza provision-vm.sh via sed antes de pasar
+# este archivo como --custom-data. Este template nunca lleva secretos reales.
+
+package_update: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - apache2-utils # htpasswd, para el Basic Auth de nginx
+
+write_files:
+  # ---------------------------------------------------------------------
+  # backend/.env -- password nuevo y random, nunca el default de dev
+  # (logsentinel/logsentinel). Permisos 600: solo root puede leerlo.
+  # ---------------------------------------------------------------------
+  - path: /opt/logsentinel/backend/.env
+    permissions: '0600'
+    owner: root:root
+    content: |
+      SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/logsentinel
+      SPRING_DATASOURCE_USERNAME=logsentinel
+      SPRING_DATASOURCE_PASSWORD=__POSTGRES_PASSWORD__
+
+  # `docker compose` carga automaticamente `.env` desde su directorio de
+  # trabajo (aqui, /opt/logsentinel) -- por eso este archivo se llama `.env`
+  # y no `.env.prod`, para que `docker-compose.prod.yml` resuelva
+  # `${BACKEND_IMAGE}` sin flags adicionales. El job `deploy` de `cd.yml`
+  # sobreescribe `BACKEND_IMAGE` con el tag real (por SHA) antes de correr
+  # `up -d`.
+  - path: /opt/logsentinel/.env
+    permissions: '0600'
+    owner: root:root
+    content: |
+      POSTGRES_PASSWORD=__POSTGRES_PASSWORD__
+      BACKEND_IMAGE=ghcr.io/lgurrieri/logsentinel-backend:latest
+
+runcmd:
+  # ---------------------------------------------------------------------
+  # Docker Engine (repo oficial, no el paquete `docker.io` de Ubuntu)
+  # ---------------------------------------------------------------------
+  - install -m 0755 -d /etc/apt/keyrings
+  - curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+  - chmod a+r /etc/apt/keyrings/docker.asc
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc]
+    https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable"
+    > /etc/apt/sources.list.d/docker.list
+  - apt-get update -y
+  - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+
+  # ---------------------------------------------------------------------
+  # Basic Auth de nginx -- credenciales inyectadas, nunca committeadas
+  # ---------------------------------------------------------------------
+  - mkdir -p /opt/logsentinel/IaC/nginx
+  - htpasswd -bc /opt/logsentinel/IaC/nginx/.htpasswd "__NGINX_BASIC_AUTH_USER__" "__NGINX_BASIC_AUTH_PASS__"
+
+  # ---------------------------------------------------------------------
+  # Arranque: `--wait` espera los healthchecks ya definidos en
+  # docker-compose.yml (db/ollama/backend service_healthy) antes de
+  # considerar exitoso el arranque -- resuelve el orden de arranque sin
+  # necesidad de un script de polling a medida.
+  #
+  # Nota: en este primer boot, `docker-compose.yml` / `docker-compose.prod.yml`
+  # / `IaC/nginx/nginx.conf` todavia no existen en /opt/logsentinel -- los
+  # sube el job `deploy` de `.github/workflows/cd.yml` por scp en el primer
+  # `workflow_dispatch` del dia. Este runcmd deja el host listo (Docker +
+  # .env + .htpasswd) para que ese primer deploy solo tenga que copiar
+  # archivos y correr `docker compose up -d --wait`.
+  - systemctl enable docker
+  - systemctl start docker
