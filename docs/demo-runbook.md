@@ -249,10 +249,14 @@ a propósito para esta demo.
 
 ### 8.3 Desplegar
 
-1. Disparar manualmente el workflow `.github/workflows/cd.yml`
-   (`workflow_dispatch` — Actions → CD → Run workflow). Build de la imagen
-   backend + push a GHCR, build del frontend (con `VITE_API_BASE_URL=""` para que
-   quede same-origin vía Nginx), y deploy por SSH/SCP a la VM.
+1. El workflow `.github/workflows/cd.yml` corre solo en cada push a `main`
+   (en la práctica, cada PR mergeado) y también admite dispatch manual
+   (Actions → CD → Run workflow) para un redeploy puntual sin cambios de
+   código. Build de la imagen backend + push a GHCR, build del frontend (con
+   `VITE_API_BASE_URL=""` para que quede same-origin vía Nginx), y deploy por
+   SSH/SCP a la VM. `concurrency` serializa los runs para que un merge durante
+   un deploy en curso quede en cola en vez de correr en paralelo contra la
+   misma VM.
 2. Verificar que los 4 servicios estén healthy:
    ```bash
    ssh -i ./logsentinel-vm "${ADMIN_USER}@${DNS_LABEL}.${LOCATION}.cloudapp.azure.com" \
@@ -268,9 +272,10 @@ a propósito para esta demo.
 
 ### 8.4 Operación diaria (una vez ya desplegado)
 
-La Automation Account enciende/apaga la VM sola (10:30/16:15 ART). Para un
-redeploy de código nuevo, repetir solo el paso 8.3.1. Para apagar/prender fuera
-de horario manualmente:
+La Automation Account enciende/apaga la VM sola (10:30/16:15 ART). Cada PR
+mergeado a `main` redespliega solo automáticamente (paso 8.3.1); para forzar un
+redeploy sin cambios de código, usar el dispatch manual del mismo workflow.
+Para apagar/prender fuera de horario manualmente:
 ```bash
 az vm start --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}"
 az vm deallocate --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}"

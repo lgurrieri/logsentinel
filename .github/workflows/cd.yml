@@ -1,9 +1,18 @@
 name: CD
 
-# Solo dispatch manual -- nunca push-to-main automatico. Elimina el riesgo de
-# un redeploy accidental cerca de la ventana de demo (10:30-16:15 ART).
+# Dispara en cada push a main (i.e. cada PR mergeado, dado que main esta
+# protegida contra push directo) y tambien admite dispatch manual para un
+# redeploy puntual sin cambios de codigo. `concurrency` serializa los runs
+# para que un segundo merge durante un deploy en curso quede en cola en vez
+# de correr en paralelo contra la misma VM.
 on:
+  push:
+    branches: [main]
   workflow_dispatch: {}
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
 
 permissions:
   contents: read
