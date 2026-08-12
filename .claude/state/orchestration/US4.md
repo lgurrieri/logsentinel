@@ -71,7 +71,7 @@ PASO 2.5).
 | LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | 9390216 | humano | 2026-08-11 |
 | LOG-US4-BE-03 | logsentinel-backend-implementer | completed (PARTIAL, ver DEBT-004) | 1 | 4a2bd79 | humano | 2026-08-11 |
 | LOG-US4-FE-04 | logsentinel-frontend-implementer | completed | 1 | 873d1c7 | humano | 2026-08-11 |
-| LOG-US4-E2E-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
+| LOG-US4-E2E-04 | logsentinel-frontend-implementer | completed | 1 | 19433d6 | humano | 2026-08-11 |
 
 ## RESUELTO (2026-08-11): DEBT-003 bloquea LOG-US4-E2E-04 — tickets nuevos creados
 
@@ -90,6 +90,13 @@ backend/frontend, mismo patrón que `BE-02B`/`FE-03`), texto completo en
 
 Orden de ejecución obligatorio: `LOG-US4-BE-03` → `LOG-US4-FE-04` → (recién entonces)
 `LOG-US4-E2E-04`.
+
+**Checkpoint final (2026-08-11): `LOG-US4-E2E-04` aprobado.** Verificado GREEN dos
+veces (corrida automatizada del subagente + verificación manual en modo headed).
+Decisión humana: "Aprobar y continuar". Dos commits separados: `a74de56` (fix
+documental suelto de `LOG-US4-BE-02B`, nunca comiteado con ese ticket) y `19433d6`
+(el ticket E2E-04 en sí, incluyendo `DEBT-005`). **Todos los tickets de US4 quedan
+`completed`.**
 
 **Actualización (2026-08-11): ambos tickets completados.** `LOG-US4-BE-03` (commit
 `4a2bd79`, STATUS: PARTIAL — ver `DEBT-004`, gaps preexistentes de `tokensUsed`/`updatedAt`
