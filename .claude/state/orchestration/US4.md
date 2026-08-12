@@ -69,7 +69,27 @@ PASO 2.5).
 | LOG-US4-TEST-03 | logsentinel-backend-implementer | completed | 1 | b68e9bc | humano | 2026-08-11 |
 | LOG-US4-BE-02B | logsentinel-backend-implementer | completed | 1 | 13c99c0 | humano | 2026-08-11 |
 | LOG-US4-FE-03 | logsentinel-frontend-implementer | completed (PARTIAL, ver DEBT-003) | 1 | 9390216 | humano | 2026-08-11 |
-| LOG-US4-E2E-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
+| LOG-US4-BE-03 | logsentinel-backend-implementer | pending | 0 | — | — | — |
+| LOG-US4-FE-04 | logsentinel-frontend-implementer | pending | 0 | — | — | — |
+| LOG-US4-E2E-04 | logsentinel-frontend-implementer | blocked (por LOG-US4-BE-03/FE-04) | 0 | — | — | — |
+
+## RESUELTO (2026-08-11): DEBT-003 bloquea LOG-US4-E2E-04 — tickets nuevos creados
+
+Al preparar el dispatch de `LOG-US4-E2E-04`, lectura de la user-story confirmó que su
+Gherkin Happy Path exige "el SRE presiona el botón 'Ejecutar Remediación' en la interfaz
+web" — inejecutable en un E2E real dado `DEBT-003` (`RemediationPanel` no montado en
+ninguna página, `GET /incidents/{id}` inexistente en el backend).
+
+**Decisión humana: "Resolver DEBT-003 primero"**. Dos tickets nuevos creados (split
+backend/frontend, mismo patrón que `BE-02B`/`FE-03`), texto completo en
+`docs/tickets/tickets.md`:
+- `LOG-US4-BE-03`: implementa `GET /incidents/{id}` (`IncidentController` + caso de uso
+  de lectura + mapeo a `IncidentDetail`, incluyendo `analyses[].suggestedScript`).
+- `LOG-US4-FE-04`: monta `RemediationPanel` en `IncidentDashboardPage.tsx` vía fetch a
+  ese endpoint. Depende de `LOG-US4-BE-03`.
+
+Orden de ejecución obligatorio: `LOG-US4-BE-03` → `LOG-US4-FE-04` → (recién entonces)
+`LOG-US4-E2E-04`. `DEBT-003` se marcará "Convertido a ticket" cuando ambos cierren.
 
 ## RESUELTO (2026-08-11): CONTRACT_GATE: DRIFT_DETECTED de LOG-US4-FE-03 (stdout/stderr)
 

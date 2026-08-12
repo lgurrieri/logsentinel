@@ -100,5 +100,27 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   análisis/diagnóstico asociado con su `suggestedScript`), y (b) agregue el fetch +
   wiring de `RemediationPanel` en `IncidentDashboardPage.tsx` una vez ese endpoint
   exista.
+* **Estado:** Convertido a ticket (`LOG-US4-BE-03` implementa el endpoint; `LOG-US4-FE-04`
+  pendiente para el wiring en el frontend)
+* **Detectado:** 2026-08-11
+
+---
+
+### `DEBT-004`: `IncidentAnalysis.tokensUsed` y `Incident.updatedAt` sin fuente de datos real
+
+* **Origen:** `LOG-US4-BE-03`
+* **Descripción:** El contrato OpenAPI exige `IncidentAnalysis.tokensUsed` (integer,
+  no-nullable) e `Incident.updatedAt`, pero ningún componente del backend los captura ni
+  persiste. `GET /incidents/{id}` devuelve `tokensUsed` con un placeholder hardcodeado
+  (`0`, documentado en Javadoc) y omite `updatedAt` del DTO de respuesta. El gap de
+  `updatedAt` es preexistente (heredado de `LOG-US1-BE-02B`, donde tampoco se persistía),
+  no introducido por este ticket.
+* **Impacto:** El frontend no puede mostrar consumo real de tokens ni fecha de última
+  actualización del incidente; cualquier UI que dependa de esos valores mostraría datos
+  falsos (`tokensUsed: 0` siempre) o incompletos (campo ausente).
+* **Sugerencia de resolución:** (1) Extender `IncidentDiagnostic`/`incident_diagnostics`
+  para persistir el `Usage` de Spring AI capturado en `DiagnosticChatPort`. (2) Agregar
+  `updated_at` a `incidents` (migración Flyway + trigger o `@PreUpdate`) y propagarlo al
+  constructor de `Incident` (impacta 6 archivos del proyecto).
 * **Estado:** Abierto
 * **Detectado:** 2026-08-11

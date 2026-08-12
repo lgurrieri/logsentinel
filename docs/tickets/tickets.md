@@ -294,6 +294,28 @@
 
 
 
+#### `LOG-US4-BE-03`: Endpoint de Detalle Consolidado de Incidente
+
+* **Descripción:** Implementar el endpoint de lectura que consolida el detalle de un incidente — incluyendo su historial de diagnósticos generados por IA con el script de remediación sugerido, si existe — para que el frontend pueda montar el panel de remediación contra datos reales.
+* **Criterios de Aceptación Técnicos:**
+* Implementar `GET /incidents/{id}` en `IncidentController`, delegando a un caso de uso de lectura dedicado (no lógica de negocio en el controller), devolviendo `IncidentDetail` tal como lo define `docs/openapi: 3.0.yml` (`Incident` + `analyses: IncidentAnalysis[]`).
+* Si el `id` no corresponde a ningún incidente existente, responder `404 Not Found`, tal como especifica el contrato.
+* El campo `analyses` debe incluir el/los diagnóstico(s) persistidos para ese incidente (entidad `IncidentDiagnostic`, ya existente desde `LOG-US3-DB-02`/`LOG-US3-DB-02B`), mapeados al schema `IncidentAnalysis` del contrato — incluyendo `suggestedScript`.
+* Cobertura de test: incidente existente con diagnóstico(s) asociado(s), incidente existente sin diagnósticos (`analyses` vacío), incidente inexistente (`404`).
+* **Nota (resolución de `DEBT-003`, 2026-08-11):** este endpoint estaba definido en el contrato desde el inicio de US4 pero nunca se implementó; su ausencia dejó a `RemediationPanel` (`LOG-US4-FE-03`) sin poder montarse en ninguna página. Ver `LOG-US4-FE-04` para el wiring correspondiente en el frontend.
+
+
+#### `LOG-US4-FE-04`: Montaje de RemediationPanel en el Dashboard de Incidentes
+
+* **Descripción:** Integrar el componente `RemediationPanel` (ya implementado y testeado en `LOG-US4-FE-03`, pero no montado en ninguna página) en `IncidentDashboardPage.tsx`, consumiendo `GET /incidents/{id}` (`LOG-US4-BE-03`) para obtener el script sugerido, cerrando el gap documentado en `DEBT-003`.
+* **Criterios de Aceptación Técnicos:**
+* Agregar un hook de fetch (ej. `useIncidentDetail`) que llame a `GET /incidents/{id}` y exponga el `IncidentDetail` resultante (incluyendo el `suggestedScript` del diagnóstico más reciente) a `IncidentDashboardPage.tsx`.
+* Montar `RemediationPanel` en `IncidentDashboardPage.tsx`, pasándole el `incidentId`/`suggestedScript` obtenidos del fetch.
+* Manejar los estados de carga/error del fetch sin romper el resto de la página — `DiagnosticTerminal` (ya montado desde `LOG-US3-FE-03`) debe seguir funcionando de forma independiente.
+* Test de integración de página: dado un incidente con `suggestedScript` no nulo, el botón "Ejecutar Script de Remediación" debe ser alcanzable y clickeable en el DOM renderizado (esto es lo que habilita el paso de UI del Gherkin de `LOG-US4-E2E-04`).
+* **Depende de `LOG-US4-BE-03`** — no puede cerrarse antes.
+
+
 #### `LOG-US4-E2E-04`: Orquestación de Tests End-to-End con Playwright
 
 * **Descripción:** Implementar el test de integración definitivo que emule el camino feliz completo (Happy Path) del usuario interactuando con toda la plataforma de manera automatizada.
