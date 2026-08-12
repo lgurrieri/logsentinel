@@ -33,6 +33,8 @@ SUBNET_NAME="${VM_NAME}-subnet"
 PIP_NAME="${VM_NAME}-pip"
 NIC_NAME="${VM_NAME}-nic"
 AUTOMATION_ACCOUNT_NAME="${VM_NAME}-automation"
+STORAGE_ACCOUNT_NAME="${STORAGE_ACCOUNT_NAME:-logsentineldeploy}"
+DEPLOY_CONTAINER_NAME="deploy-bundle"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLOUD_INIT_TEMPLATE="${SCRIPT_DIR}/cloud-init.yaml"
@@ -138,6 +140,48 @@ az vm create \
 echo "==> VM lista. FQDN público: ${DNS_LABEL}.${LOCATION}.cloudapp.azure.com"
 echo "==> Esperar unos minutos a que cloud-init termine (docker compose up --wait)."
 echo "==> Verificar con: az vm run-command invoke --resource-group ${RESOURCE_GROUP} --name ${VM_NAME} --command-id RunShellScript --scripts 'cloud-init status --wait'"
+
+# ---------------------------------------------------------------------------
+# Identidad administrada de la VM (System-Assigned) + Storage Account privado
+# para el bundle de deploy de cd.yml -- sin SSH/SCP, sin secretos de storage
+# (RBAC de datos vía la identidad de la VM, no connection string ni SAS).
+# ---------------------------------------------------------------------------
+echo "==> Asignando identidad administrada (system-assigned) a la VM"
+az vm identity assign --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" -o none
+
+VM_PRINCIPAL_ID="$(az vm identity show \
+  --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" \
+  --query principalId -o tsv)"
+
+echo "==> Storage Account privado: ${STORAGE_ACCOUNT_NAME}"
+az storage account create \
+  --resource-group "${RESOURCE_GROUP}" \
+  --name "${STORAGE_ACCOUNT_NAME}" \
+  --location "${LOCATION}" \
+  --sku Standard_LRS \
+  --kind StorageV2 \
+  --allow-blob-public-access false \
+  --min-tls-version TLS1_2 \
+  -o none
+
+az storage container create \
+  --account-name "${STORAGE_ACCOUNT_NAME}" \
+  --name "${DEPLOY_CONTAINER_NAME}" \
+  --auth-mode login \
+  --public-access off \
+  -o none
+
+STORAGE_ID="$(az storage account show \
+  --resource-group "${RESOURCE_GROUP}" --name "${STORAGE_ACCOUNT_NAME}" \
+  --query id -o tsv)"
+
+az role assignment create \
+  --assignee-object-id "${VM_PRINCIPAL_ID}" --assignee-principal-type ServicePrincipal \
+  --role "Storage Blob Data Reader" \
+  --scope "${STORAGE_ID}" -o none
+
+echo "==> Rol 'Storage Blob Data Reader' asignado a la identidad de la VM, acotado únicamente al Storage Account."
+echo "==> Siguiente paso manual: correr IaC/scripts/setup-oidc.sh para el App Registration + Federated Credential de cd.yml."
 
 # ---------------------------------------------------------------------------
 # Automation Account (para los runbooks de start/stop) con rol acotado

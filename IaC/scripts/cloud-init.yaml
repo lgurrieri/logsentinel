@@ -55,6 +55,20 @@ runcmd:
   - apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
 
   # ---------------------------------------------------------------------
+  # Azure CLI (repo oficial de Microsoft, no snap) -- necesaria para que el
+  # job `deploy` de cd.yml pueda hacer `az login --identity` +
+  # `az storage blob download` dentro de la VM vía `az vm run-command`.
+  # ---------------------------------------------------------------------
+  - curl -sLS https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg
+  - chmod a+r /etc/apt/keyrings/microsoft.gpg
+  - >
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg]
+    https://packages.microsoft.com/repos/azure-cli/ $(. /etc/os-release && echo "$VERSION_CODENAME") main"
+    > /etc/apt/sources.list.d/azure-cli.list
+  - apt-get update -y
+  - apt-get install -y azure-cli
+
+  # ---------------------------------------------------------------------
   # Basic Auth de nginx -- credenciales inyectadas, nunca committeadas
   # ---------------------------------------------------------------------
   - mkdir -p /opt/logsentinel/IaC/nginx

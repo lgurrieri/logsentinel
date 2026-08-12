@@ -92,6 +92,9 @@ jobs:
     timeout-minutes: 10
     environment: production
     needs: [build-push-backend, build-frontend]
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4
 
@@ -101,38 +104,59 @@ jobs:
           name: frontend-dist
           path: frontend/dist
 
-      - name: Configure SSH
-        run: |
-          mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.AZURE_VM_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "${{ secrets.AZURE_VM_HOST }}" >> ~/.ssh/known_hosts
+      - name: Azure login (OIDC federado, sin secret de larga vida)
+        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca  # v3.0.1
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Authenticate VM against GHCR
-        # Usa el mismo GITHUB_TOKEN del job (permiso packages:write ya incluye
-        # lectura sobre paquetes del propio repo) -- evita depender de marcar
-        # el paquete público a mano entre el push y este pull.
+      - name: Empaquetar y subir el bundle de deploy al Storage Account
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
-            "docker login ghcr.io -u ${{ github.actor }} --password-stdin" <<< "${{ secrets.GITHUB_TOKEN }}"
+          tar czf bundle.tar.gz docker-compose.yml docker-compose.prod.yml IaC/nginx/nginx.conf frontend/dist
+          az storage blob upload \
+            --auth-mode login \
+            --account-name "${{ vars.AZURE_STORAGE_ACCOUNT }}" \
+            --container-name deploy-bundle \
+            --name "bundle-${{ github.sha }}.tar.gz" \
+            --file bundle.tar.gz \
+            --overwrite
 
-      - name: Copy compose/config files + frontend build to the VM
-        run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
-            'sudo mkdir -p /opt/logsentinel/IaC/nginx /opt/logsentinel/frontend/dist && sudo chown -R $(whoami) /opt/logsentinel/IaC /opt/logsentinel/frontend'
-          scp -i ~/.ssh/deploy_key docker-compose.yml docker-compose.prod.yml \
-            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/"
-          scp -i ~/.ssh/deploy_key IaC/nginx/nginx.conf \
-            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/IaC/nginx/"
-          scp -i ~/.ssh/deploy_key -r frontend/dist/. \
-            "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}:/opt/logsentinel/frontend/dist/"
-
-      - name: Pull and restart stack
+      - name: Desplegar en la VM vía az vm run-command (sin SSH)
         env:
           IMAGE_TAG: ${{ needs.build-push-backend.outputs.image_tag }}
         run: |
-          ssh -i ~/.ssh/deploy_key "${{ secrets.AZURE_VM_SSH_USER }}@${{ secrets.AZURE_VM_HOST }}" \
-            "cd /opt/logsentinel && \
-             sed -i 's|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE_TAG}|' .env && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml pull && \
-             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait"
+          cat > remote-deploy.sh <<'SCRIPT'
+          set -euo pipefail
+          STORAGE_ACCOUNT="$1"
+          BLOB_NAME="$2"
+          IMAGE_TAG="$3"
+
+          az login --identity -o none
+
+          mkdir -p /opt/logsentinel
+          cd /opt/logsentinel
+
+          az storage blob download \
+            --auth-mode login \
+            --account-name "${STORAGE_ACCOUNT}" \
+            --container-name deploy-bundle \
+            --name "${BLOB_NAME}" \
+            --file bundle.tar.gz
+
+          mkdir -p IaC/nginx frontend/dist
+          tar xzf bundle.tar.gz
+          rm -f bundle.tar.gz
+
+          sed -i "s|^BACKEND_IMAGE=.*|BACKEND_IMAGE=${IMAGE_TAG}|" .env
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml pull
+          docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --wait
+          SCRIPT
+
+          az vm run-command invoke \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --name "${{ vars.AZURE_VM_NAME }}" \
+            --command-id RunShellScript \
+            --scripts @remote-deploy.sh \
+            --parameters "${{ vars.AZURE_STORAGE_ACCOUNT }}" "bundle-${{ github.sha }}.tar.gz" "${IMAGE_TAG}"
+

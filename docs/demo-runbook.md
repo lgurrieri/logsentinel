@@ -227,25 +227,54 @@ a propósito para esta demo.
    Crear en la Automation Account las variables `ResourceGroupName`/`VMName` y la
    credencial `NginxBasicAuth`, y programar los schedules: **10:30 ART** (start) /
    **16:15 ART** (stop).
+6. Crear la identidad OIDC federada que usa `cd.yml` para desplegar sin SSH (ver
+   `DEBT-009` en `docs/deuda-tecnica.md` — se prefirió esto por sobre abrir el
+   puerto 22 al runner de GitHub Actions, que expone la VM a Internet):
+   ```bash
+   export GITHUB_REPO="lgurrieri/logsentinel"
+   export GITHUB_ENVIRONMENT="production"
+   ./IaC/scripts/setup-oidc.sh
+   ```
+   Crea el App Registration `logsentinel-cd-oidc` + Service Principal +
+   Federated Identity Credential (sin client-secret), y le asigna `Virtual
+   Machine Contributor` (acotado a la VM) + `Storage Blob Data Contributor`
+   (acotado al Storage Account creado en el paso 5 de `provision-vm.sh`). Al
+   final imprime los 4 valores a cargar en el paso 8.2.
 
 ### 8.2 Configurar GitHub para el deploy continuo
 
-1. Crear el Environment `production` (Settings → Environments) con estos 5
-   secrets:
+1. Crear el Environment `production` (Settings → Environments) con estas
+   variables (no son secretas — un `client-id`/`tenant-id` sin secret asociado
+   no otorga acceso por sí solo, la confianza está en la Federated Identity
+   Credential atada al repo+environment exacto) y secrets:
+
+   | Variable | Contenido |
+   |---|---|
+   | `AZURE_CLIENT_ID` | `appId` del App Registration (impreso por `setup-oidc.sh`) |
+   | `AZURE_TENANT_ID` | Tenant de Azure AD |
+   | `AZURE_SUBSCRIPTION_ID` | Suscripción donde vive la VM |
+   | `AZURE_STORAGE_ACCOUNT` | Nombre del Storage Account del bundle de deploy (`logsentineldeploy`) |
+   | `AZURE_RESOURCE_GROUP` | Resource group de la VM |
+   | `AZURE_VM_NAME` | Nombre de la VM |
 
    | Secret | Contenido |
    |---|---|
-   | `AZURE_VM_HOST` | DNS label fijo de la VM (`{DNS_LABEL}.{LOCATION}.cloudapp.azure.com`) |
-   | `AZURE_VM_SSH_USER` | `ADMIN_USER` usado en el provisioning |
-   | `AZURE_VM_SSH_PRIVATE_KEY` | Contenido de `./logsentinel-vm` (la clave privada dedicada del paso 8.1.3) |
+   | `AZURE_VM_HOST` | DNS label fijo de la VM (`{DNS_LABEL}.{LOCATION}.cloudapp.azure.com`) — usado solo para el `ssh` manual de verificación de 8.3.2, ya no por `cd.yml` |
    | `POSTGRES_PASSWORD` | El mismo valor exportado como `POSTGRES_PASSWORD` en 8.1.4 |
    | `NGINX_BASIC_AUTH_USER` / `NGINX_BASIC_AUTH_PASS` | Los mismos valores de 8.1.4 |
 
+   Ya **no hace falta** una clave SSH dedicada para el deploy continuo — el job
+   `deploy` de `cd.yml` autentica contra Azure vía OIDC y ejecuta los pasos con
+   `az vm run-command invoke` (control plane de Azure, no la red de la VM). La
+   clave SSH del paso 8.1.3 sigue sirviendo para el `ssh` manual de 8.3.2.
 2. **Settings → Actions → General → Workflow permissions** → marcar "Read and
    write permissions" (sin esto, el push a GHCR falla con 403).
-3. No hace falta marcar el paquete GHCR como público: el job `deploy` de
-   `cd.yml` autentica la VM contra `ghcr.io` con el mismo `GITHUB_TOKEN` del
-   job antes de hacer `docker compose pull`.
+3. Marcar el paquete GHCR `logsentinel-backend` como **público** (Settings del
+   paquete, o `gh api -X PATCH /user/packages/container/logsentinel-backend -f
+   visibility=public`) — el repo ya es público, así que la imagen construida
+   desde ese código no expone información nueva; evita pasar un
+   `GITHUB_TOKEN` como parámetro de `run-command` (que de otro modo quedaría
+   visible en el Activity Log de Azure).
 
 ### 8.3 Desplegar
 
@@ -253,11 +282,19 @@ a propósito para esta demo.
    (en la práctica, cada PR mergeado) y también admite dispatch manual
    (Actions → CD → Run workflow) para un redeploy puntual sin cambios de
    código. Build de la imagen backend + push a GHCR, build del frontend (con
-   `VITE_API_BASE_URL=""` para que quede same-origin vía Nginx), y deploy por
-   SSH/SCP a la VM. `concurrency` serializa los runs para que un merge durante
-   un deploy en curso quede en cola en vez de correr en paralelo contra la
-   misma VM.
-2. Verificar que los 4 servicios estén healthy:
+   `VITE_API_BASE_URL=""` para que quede same-origin vía Nginx), y deploy vía
+   OIDC + `az vm run-command invoke` (sin SSH — ver `DEBT-009`).
+   `concurrency` serializa los runs para que un merge durante un deploy en
+   curso quede en cola en vez de correr en paralelo contra la misma VM.
+2. Verificar que los 4 servicios estén healthy — preferí `az vm run-command`
+   (no depende de que tu IP siga coincidiendo con la regla NSG de SSH):
+   ```bash
+   az vm run-command invoke \
+     --resource-group "${RESOURCE_GROUP}" --name "${VM_NAME}" \
+     --command-id RunShellScript \
+     --scripts 'cd /opt/logsentinel && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps'
+   ```
+   Alternativa por SSH (requiere que tu IP esté en la regla `AllowSSHFromMyIP`):
    ```bash
    ssh -i ./logsentinel-vm "${ADMIN_USER}@${DNS_LABEL}.${LOCATION}.cloudapp.azure.com" \
      'cd /opt/logsentinel && docker compose -f docker-compose.yml -f docker-compose.prod.yml ps'
