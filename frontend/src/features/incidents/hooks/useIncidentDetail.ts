@@ -22,8 +22,18 @@ interface UseIncidentDetailResult {
  * árbol de React (se captura y expone como `error` genérico) — `DiagnosticTerminal`
  * (alimentado por `useDiagnosticStreamConnection`, independiente de este hook) sigue
  * funcionando sin verse afectado.
+ *
+ * `diagnosticSettled` (DEBT-011/LOG-US3-FE-06): al montar, el diagnóstico todavía no
+ * existe server-side casi siempre (se genera de forma asíncrona vía streaming SSE), por
+ * lo que este fetch inicial normalmente trae `analyses: []`. Pasar `true` una vez que el
+ * stream de diagnóstico haya completado (ver `useDiagnosticStream().state.status` en
+ * `IncidentDashboardPage`) dispara un refetch para recoger el `suggestedScript` recién
+ * persistido, sin que este hook necesite saber nada de SSE.
  */
-export function useIncidentDetail(incidentId: string | null): UseIncidentDetailResult {
+export function useIncidentDetail(
+  incidentId: string | null,
+  diagnosticSettled: boolean = false,
+): UseIncidentDetailResult {
   const [incidentDetail, setIncidentDetail] = useState<IncidentDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +64,7 @@ export function useIncidentDetail(incidentId: string | null): UseIncidentDetailR
     return () => {
       cancelled = true;
     };
-  }, [incidentId]);
+  }, [incidentId, diagnosticSettled]);
 
   const latestAnalysis = incidentDetail?.analyses.at(-1) ?? null;
 

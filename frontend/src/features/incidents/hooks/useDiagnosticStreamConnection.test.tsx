@@ -4,33 +4,7 @@ import type { ReactNode } from 'react';
 import { DiagnosticStreamProvider } from '../context/DiagnosticStreamContext';
 import { useDiagnosticStream } from './useDiagnosticStream';
 import { useDiagnosticStreamConnection } from './useDiagnosticStreamConnection';
-
-type MockEventSource = {
-  url: string;
-  onmessage: ((e: MessageEvent) => void) | null;
-  onerror: ((e: Event) => void) | null;
-  close: ReturnType<typeof vi.fn>;
-};
-
-let instances: MockEventSource[] = [];
-
-function installMockEventSource() {
-  instances = [];
-  vi.stubGlobal(
-    'EventSource',
-    vi.fn().mockImplementation(function (this: MockEventSource, url: string) {
-      this.url = url;
-      this.onmessage = null;
-      this.onerror = null;
-      this.close = vi.fn();
-      instances.push(this);
-    }),
-  );
-}
-
-function currentSource(): MockEventSource {
-  return instances[instances.length - 1];
-}
+import { installMockEventSource, currentSource, instanceCount } from '../testUtils/mockEventSource';
 
 function wrapper({ children }: { children: ReactNode }) {
   return <DiagnosticStreamProvider>{children}</DiagnosticStreamProvider>;
@@ -99,7 +73,7 @@ describe('useDiagnosticStreamConnection', () => {
     act(() => {
       vi.advanceTimersByTime(1000);
     });
-    expect(instances).toHaveLength(2);
+    expect(instanceCount()).toBe(2);
 
     act(() => {
       currentSource().onerror?.(new Event('error'));
@@ -107,7 +81,7 @@ describe('useDiagnosticStreamConnection', () => {
     act(() => {
       vi.advanceTimersByTime(2000);
     });
-    expect(instances).toHaveLength(3);
+    expect(instanceCount()).toBe(3);
 
     act(() => {
       currentSource().onerror?.(new Event('error'));
@@ -115,7 +89,7 @@ describe('useDiagnosticStreamConnection', () => {
     act(() => {
       vi.advanceTimersByTime(4000);
     });
-    expect(instances).toHaveLength(4);
+    expect(instanceCount()).toBe(4);
 
     // Cuarto intento agotado (MAX_RETRIES = 3) → STREAM_FAILED, sin más reconexiones
     act(() => {
@@ -128,7 +102,7 @@ describe('useDiagnosticStreamConnection', () => {
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(instances).toHaveLength(4);
+    expect(instanceCount()).toBe(4);
   });
 
   it('trata un cierre tras haber recibido al menos un chunk como fin exitoso del stream (sin reintentar)', () => {
@@ -147,6 +121,6 @@ describe('useDiagnosticStreamConnection', () => {
     act(() => {
       vi.advanceTimersByTime(10_000);
     });
-    expect(instances).toHaveLength(1);
+    expect(instanceCount()).toBe(1);
   });
 });

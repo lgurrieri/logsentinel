@@ -333,3 +333,55 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
 * **Estado:** Cerrado
 * **Detectado:** 2026-08-12
 * **Cerrado:** 2026-08-13
+
+---
+
+### `DEBT-011`: `useIncidentDetail` no re-consulta tras completarse el streaming SSE — el panel de remediación queda bloqueado en el flujo feliz real
+
+* **Origen:** Grabación de un video de demo de un caso OK contra la VM de producción:
+  crear un incidente nuevo y navegar de inmediato a `/incidents/{id}/dashboard` (el
+  camino real de un usuario, no uno con el diagnóstico ya generado de antes).
+* **Descripción:** `useIncidentDetail.ts` (líneas 31-57) dispara `GET
+  /api/v1/incidents/{id}` **una única vez** al montar, con `[incidentId]` como única
+  dependencia del `useEffect`. `DiagnosticTerminal`/`useDiagnosticStreamConnection`
+  (el streaming SSE) es un componente completamente independiente que nunca invalida
+  ni retrigguea este hook cuando el diagnóstico termina de generarse (~60-90s vía
+  Ollama en la VM de demo). Como el `GET` corre antes de que exista el análisis,
+  `analyses` llega vacío y `suggestedScript` queda `null` en el estado de React para
+  siempre, aunque el backend sí termine y persista el diagnóstico correctamente
+  (confirmado con `curl` directo: `suggestedScript: "echo 'auth-service pool
+  recycled'"` ya persistido mientras la UI seguía mostrando "No hay ningún script de
+  remediación disponible").
+* **Impacto:** Bloquea el flujo feliz real de principio a fin (crear incidente → ver
+  su dashboard) — no un caso extremo. `RemediationPanel` solo funciona hoy si el
+  usuario recarga la página manualmente después de que el diagnóstico ya terminó, o
+  si navega a un incidente cuyo diagnóstico ya estaba persistido de antes. Reproducido
+  y verificado end-to-end contra producción (incidente `e4274228-f172-4b0f-85d4-
+  f28fc0f28aeb`): el botón "Ejecutar Script de Remediación" nunca se habilitó en 4
+  minutos de espera en la primera carga; sí se habilitó de inmediato al recargar la
+  página una vez el diagnóstico ya estaba persistido.
+* **Sugerencia de resolución:** hacer que la finalización del stream SSE
+  (`onComplete` en `useDiagnosticStreamConnection`/`DiagnosticStreamContext`)
+  dispare un refetch de `useIncidentDetail`, en vez de que este último dependa solo
+  de `incidentId`. Requiere ticket dedicado con TDD (RED: test que falle mostrando
+  que `suggestedScript` sigue `null` tras completarse el stream mockeado; GREEN:
+  wiring del refetch).
+* **Resolución:** `LOG-US3-FE-06` extendió `useIncidentDetail` con un segundo
+  parámetro `diagnosticSettled: boolean` incluido en el array de dependencias de su
+  `useEffect`, y levantó `DiagnosticStreamProvider` en `IncidentDashboardPage.tsx`
+  para envolver toda la página (antes solo envolvía `DiagnosticTerminal`), derivando
+  `diagnosticSettled` de `useDiagnosticStream().state.status` (`'COMPLETED'` o
+  `'STREAM_FAILED'`). `DiagnosticStreamContext`, `useDiagnosticStreamConnection` y
+  `DiagnosticTerminal` no se modificaron. Ciclo TDD completo: RED #1
+  (`useIncidentDetail.test.ts`, un `rerender` con `settled: true` que probaba que el
+  hook nunca reconsultaba), GREEN #1 (el cambio de firma/deps del hook), RED #2
+  (`IncidentDashboardPage.test.tsx`, test de integración con `EventSource` mockeado
+  reproduciendo el bug end-to-end), GREEN #2 (la restructuración del componente en
+  `IncidentDashboardPage` + `IncidentDashboardContent`), REFACTOR (se extrajo el
+  mock de `EventSource` duplicado en 3 test files a
+  `frontend/src/features/incidents/testUtils/mockEventSource.ts`).
+* **Verificación:** suite completa de frontend en verde (`npx vitest run`: 20 test
+  files, 111 tests) y `npm run build` sin errores de tipos, tras el refactor.
+* **Estado:** Cerrado
+* **Detectado:** 2026-08-13
+* **Cerrado:** 2026-08-13

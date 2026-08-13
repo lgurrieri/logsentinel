@@ -82,4 +82,49 @@ describe('useIncidentDetail', () => {
     expect(result.current.error).not.toMatch(/404/i);
     expect(result.current.suggestedScript).toBeNull();
   });
+
+  it('vuelve a consultar cuando diagnosticSettled pasa de false a true, recogiendo el suggestedScript recién persistido (DEBT-011/LOG-US3-FE-06)', async () => {
+    let callCount = 0;
+    server.use(
+      http.get(`${API_BASE}/api/v1/incidents/${incidentId}`, () => {
+        callCount += 1;
+        return HttpResponse.json(
+          {
+            id: incidentId,
+            systemName: 'payment-gateway',
+            urgency: 'CRITICAL',
+            status: 'OPEN',
+            createdAt: '2026-08-11T10:00:00Z',
+            analyses:
+              callCount === 1
+                ? []
+                : [
+                    {
+                      id: 'analysis-1',
+                      rawLogSnapshot: 'ERROR: pool exhausted',
+                      diagnosticOutput: 'El pool de conexiones se agotó.',
+                      suggestedScript: 'systemctl restart payment-gw',
+                      tokensUsed: 0,
+                      createdAt: '2026-08-11T10:05:00Z',
+                    },
+                  ],
+          },
+          { status: 200 },
+        );
+      }),
+    );
+
+    const { result, rerender } = renderHook(
+      ({ settled }: { settled: boolean }) => useIncidentDetail(incidentId, settled),
+      { initialProps: { settled: false } },
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.suggestedScript).toBeNull();
+
+    rerender({ settled: true });
+
+    await waitFor(() => expect(result.current.suggestedScript).toBe('systemctl restart payment-gw'));
+    expect(callCount).toBe(2);
+  });
 });

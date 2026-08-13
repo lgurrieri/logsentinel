@@ -239,6 +239,20 @@
 
 
 
+#### `LOG-US3-FE-06`: Refetch del Detalle de Incidente tras Completarse el Stream de Diagnóstico
+
+* **Descripción:** Bug encontrado al grabar un video de demo del camino feliz real (VM Azure, 2026-08-12): crear un incidente y navegar de inmediato a `/incidents/{id}/dashboard`, sin que exista todavía ningún diagnóstico persistido. `useIncidentDetail` (`LOG-US4-FE-04`) dispara `GET /api/v1/incidents/{id}` una única vez al montar, con `[incidentId]` como única dependencia de su `useEffect`. `DiagnosticTerminal`/`useDiagnosticStreamConnection` (`LOG-US3-FE-03`) es un componente completamente independiente que nunca invalida ni retrigguea ese fetch cuando el diagnóstico termina de generarse (~60-90s vía Ollama). Como el `GET` corre antes de que exista el análisis, `suggestedScript` queda `null` en el estado de React para siempre, aunque el backend sí termine y persista el diagnóstico correctamente (confirmado con `curl` directo contra producción). Esto bloquea el flujo feliz de principio a fin: `RemediationPanel` (`LOG-US4-FE-04`) solo funciona hoy si el usuario recarga la página manualmente después de que el diagnóstico ya terminó de generarse.
+* **Criterios de Aceptación Técnicos:**
+* Extender `useIncidentDetail` para aceptar un segundo parámetro booleano (ej. `diagnosticSettled`) e incluirlo en el array de dependencias de su `useEffect`, de modo que un cambio de `false` a `true` dispare un refetch de `GET /incidents/{id}`, sin alterar el resto de la lógica del hook (mismo guard de cancelación, mismo manejo de `isLoading`/`error`).
+* Levantar `DiagnosticStreamProvider` en `IncidentDashboardPage.tsx` para que envuelva toda la página (no solo `DiagnosticTerminal`), derivando `diagnosticSettled` de `useDiagnosticStream().state.status` (`'COMPLETED'` o `'STREAM_FAILED'`) y pasándolo a `useIncidentDetail`. `DiagnosticStreamContext`, `useDiagnosticStreamConnection` y `DiagnosticTerminal` no deben modificarse.
+* Test unitario de `useIncidentDetail` que falle primero (RED) demostrando que el hook no vuelve a consultar cuando cambia únicamente el nuevo parámetro booleano bajo el comportamiento actual, y pase (GREEN) tras el cambio.
+* Test de integración de `IncidentDashboardPage` que falle primero (RED) reproduciendo el bug end-to-end (fetch inicial con `suggestedScript: null`, stream SSE simulado que completa, segundo fetch con `suggestedScript` poblado) y pase (GREEN) verificando que el CTA de ejecución de remediación termina habilitado sin recargar la página.
+* No romper ningún test existente de `useIncidentDetail.test.ts`, `IncidentDashboardPage.test.tsx`, `DiagnosticTerminal.test.tsx` ni `useDiagnosticStreamConnection.test.tsx`.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR).
+* **Origen:** hallazgo durante grabación de video de demo en producción — ver `DEBT-011` en `docs/deuda-tecnica.md`.
+
+
+
 ---
 
 ## ⚡ US4: Ejecución Segura de Scripts de Remediación y Auditoría
