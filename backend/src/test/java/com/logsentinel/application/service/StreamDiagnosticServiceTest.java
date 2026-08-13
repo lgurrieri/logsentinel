@@ -107,6 +107,27 @@ class StreamDiagnosticServiceTest {
     }
 
     @Test
+    @DisplayName("should instruct the LLM to always wrap a recommended remediation command "
+            + "in a fenced Markdown code block with a language hint")
+    void should_instruct_llm_to_wrap_recommended_command_in_fenced_code_block() {
+        UUID incidentId = UUID.randomUUID();
+        Incident incident = new Incident(incidentId, "auth-svc", Urgency.HIGH,
+                "FATAL: token validation failed", IncidentStatus.OPEN, OffsetDateTime.now());
+        given(incidentRepository.findById(incidentId)).willReturn(Optional.of(incident));
+        given(runbookSearchPort.findSimilarRunbooks(incident.getRawLogs()))
+                .willReturn(List.of(new RunbookChunk(UUID.randomUUID(),
+                        "rotate the signing key running: `openssl rotate-key --service auth`")));
+
+        streamDiagnosticService.execute(incidentId, listener);
+
+        ArgumentCaptor<String> systemPromptCaptor = ArgumentCaptor.forClass(String.class);
+        verify(diagnosticChatPort).streamDiagnosis(systemPromptCaptor.capture(), anyString(), any());
+        assertThat(systemPromptCaptor.getValue())
+                .contains("```bash")
+                .contains("bloque de codigo Markdown cercado");
+    }
+
+    @Test
     @DisplayName("should notify the listener with an error, never throw, when the incident does not exist")
     void should_notify_error_when_incident_not_found() {
         UUID incidentId = UUID.randomUUID();

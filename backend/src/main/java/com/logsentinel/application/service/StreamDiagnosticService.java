@@ -184,6 +184,9 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
         }
     }
 
+    // Instructs the LLM to always fence the remediation command, overriding the
+    // retrieved runbook's own inline-backtick style — otherwise SuggestedScriptExtractor
+    // has nothing to parse (models mirror the runbook's formatting, not just its content).
     private String buildSystemPrompt(List<RunbookChunk> runbooks) {
         String runbookContext = runbooks.stream()
                 .map(RunbookChunk::content)
@@ -192,6 +195,15 @@ public class StreamDiagnosticService implements StreamDiagnosticUseCase {
                 Eres un ingeniero SRE experto. Diagnostica la causa raiz del incidente \
                 basandote en los siguientes runbooks disponibles. No inventes soluciones \
                 fuera de este contexto.
+
+                Si tu diagnostico recomienda ejecutar un comando o script de remediacion, \
+                envolvelo SIEMPRE en un unico bloque de codigo Markdown cercado (tres \
+                comillas invertidas) con un hint de lenguaje, por ejemplo ```bash, al final \
+                de tu respuesta. Usa ese formato incluso si los runbooks de referencia \
+                citan el comando entre comillas invertidas simples en linea: el bloque \
+                cercado es obligatorio para que el comando pueda extraerse de forma \
+                automatica. No agregues ningun otro bloque cercado salvo el del comando \
+                de remediacion recomendado.
 
                 RUNBOOKS DISPONIBLES:
                 %s
