@@ -319,5 +319,17 @@ Cada ítem nuevo va con ID incremental `DEBT-NNN` (3 dígitos, no reutilizar nú
   ticket dedicado con TDD (test de `SuggestedScriptExtractor`/`StreamDiagnosticService`
   fijando el prompt esperado) dado que es un cambio de comportamiento, no solo de
   documentación.
-* **Estado:** Abierto
+* **Resolución:** `LOG-US3-BE-05` (PR #6, commit `5fb3030`, merge `1b822e5`) extendió
+  `StreamDiagnosticService.buildSystemPrompt` con la instrucción de formato descrita
+  arriba, sin tocar el seed de `runbook_chunks` (no existe ningún script de seed
+  versionado en el repo — el `/tmp/seed-runbook.sh` usado en la verificación era
+  efímero, no comiteado).
+* **Verificación:** confirmado en producción tras el deploy automático de `cd.yml`
+  (incidente `f0b24e91-a767-45d7-9d04-d35c2d521a81`, imagen
+  `ghcr.io/lgurrieri/logsentinel-backend:1b822e5e12410e27ac22c9a956b16b8254701116`):
+  el mismo runbook de `auth-service` que antes producía `suggestedScript: null` ahora
+  devuelve `"suggestedScript":"echo 'auth-service pool recycled'"` — el LLM envolvió el
+  comando en un bloque \`\`\`bash tal como se le instruyó.
+* **Estado:** Cerrado
 * **Detectado:** 2026-08-12
+* **Cerrado:** 2026-08-13
