@@ -225,6 +225,20 @@
 
 
 
+#### `LOG-US3-BE-05`: Instrucción Explícita de Formato para el Script de Remediación en el Prompt del Diagnóstico
+
+* **Descripción:** Bug encontrado en la verificación end-to-end de `LOG-US3-BE-04` en producción (VM Azure, 2026-08-12): `StreamDiagnosticService.buildSystemPrompt`/`buildUserPrompt` piden un diagnóstico grounded en los runbooks recuperados, pero no instruyen en ningún lado al LLM a emitir el comando de remediación dentro de un bloque de código Markdown (` ``` `). `SuggestedScriptExtractor.extract` (`LOG-US3-DB-02B`) es correcto y permisivo (acepta con o sin hint de lenguaje, toma el primer bloque), pero si el LLM nunca genera un bloque de código no tiene nada que extraer y devuelve `null` siempre. Verificado en vivo: 3/3 generaciones reales contra Ollama (llama3.1) sobre el runbook seedeado de `auth-service` devolvieron `diagnosticOutput` correcto y persistido, pero `suggestedScript: null` en los 3 casos — el modelo imita el estilo del runbook recuperado, que usa comillas invertidas simples inline (`` `echo '...'` ``) en vez de un bloque cercado. Esto bloquea por completo el flujo feliz de `LOG-US4-BE-02` (`POST /incidents/{id}/remediations` responde `409` sin `suggestedScript`).
+* **Criterios de Aceptación Técnicos:**
+* Extender `StreamDiagnosticService.buildSystemPrompt` con una instrucción explícita de formato: si el diagnóstico recomienda ejecutar un comando, debe envolverlo siempre en un único bloque de código Markdown cercado (con hint de lenguaje, ej. ` ```bash `) al final de la respuesta — sin alterar el resto del contenido libre del diagnóstico ni degradar la calidad de la explicación grounded en el runbook.
+* Test unitario/de integración (según corresponda al punto de prueba: contenido del prompt construido, o comportamiento de `SuggestedScriptExtractor` sobre una respuesta simulada con la nueva instrucción) que falle primero (RED) demostrando que el prompt actual no contiene la instrucción de formato, y pase (GREEN) tras el cambio.
+* No es aceptable ni necesario mockear al LLM real para afirmar no-determinismo de generación — el test debe validar el contrato del prompt (texto instruido) y/o el extractor sobre un texto de ejemplo fijo, no una llamada real a Ollama.
+* Revisar si conviene además reescribir el contenido semilla de `runbook_chunks` (`/tmp/seed-runbook.sh` / script de seed equivalente versionado) para modelar el formato esperado como few-shot implícito, dado que el LLM tiende a imitar el estilo del contexto recuperado — documentar la decisión tomada (solo prompt, solo seed, o ambos).
+* No romper ningún test existente de `StreamDiagnosticServiceTest` ni de `SuggestedScriptExtractor`.
+* Ciclo TDD obligatorio (RED → GREEN → REFACTOR).
+* **Origen:** hallazgo de verificación end-to-end de `LOG-US3-BE-04` en producción — ver `DEBT-010` en `docs/deuda-tecnica.md`.
+
+
+
 ---
 
 ## ⚡ US4: Ejecución Segura de Scripts de Remediación y Auditoría
