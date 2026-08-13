@@ -3,33 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { DiagnosticStreamProvider } from '../context/DiagnosticStreamContext';
 import { DiagnosticTerminal } from './DiagnosticTerminal';
-
-type MockEventSource = {
-  url: string;
-  onmessage: ((e: MessageEvent) => void) | null;
-  onerror: ((e: Event) => void) | null;
-  close: ReturnType<typeof vi.fn>;
-};
-
-let instances: MockEventSource[] = [];
-
-function installMockEventSource() {
-  instances = [];
-  vi.stubGlobal(
-    'EventSource',
-    vi.fn().mockImplementation(function (this: MockEventSource, url: string) {
-      this.url = url;
-      this.onmessage = null;
-      this.onerror = null;
-      this.close = vi.fn();
-      instances.push(this);
-    }),
-  );
-}
-
-function currentSource(): MockEventSource {
-  return instances[instances.length - 1];
-}
+import { installMockEventSource, currentSource } from '../testUtils/mockEventSource';
 
 function emitChunk(chunk: string) {
   act(() => {
